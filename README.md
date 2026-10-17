@@ -68,13 +68,13 @@ location (`env.sh`, `bashrc.llm`), and everything they need is inside it
 
 **Migrate:**
 
-1. Copy the folder, e.g. `rsync -a --exclude models/ ./ newpc:~/llm/`.
+1. Copy the folder, e.g. `rsync -a --exclude models/ ./ newpc:~/b70-llm/`.
    (`llama-sycl/llama-b11700/` is an extracted standalone SYCL build that does
    not run — safe to exclude.)
 2. Load the pinned vLLM image: `docker load -i images/vllm-openai-xpu-f01e24f6.tar`
    (otherwise Docker pulls it automatically; `env.sh` pins it by digest).
-3. Add the aliases: append `source ~/llm/bashrc.llm` to `~/.bashrc`.
-4. opencode: `cp ~/llm/config/opencode.global.jsonc ~/.config/opencode/opencode.jsonc`
+3. Add the aliases: append `source ~/b70-llm/bashrc.llm` to `~/.bashrc`.
+4. opencode: `cp ~/b70-llm/config/opencode.global.jsonc ~/.config/opencode/opencode.jsonc`
    (it contains your OpenRouter API key — keep it private).
 5. Fetch the model: `./download_model.sh` (~19 GB, resumable).
 6. Start: `b70-vllm` (first compile ~4 min, later starts ~2 min) or `b70-sycl`
