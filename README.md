@@ -13,7 +13,6 @@ a time** — each `serve_*` script stops the others first.
 ## Hardware
 
 - GPU: Intel Arc Pro B70 `BMG-G31` (`8086:e223`), 32 GB VRAM, `xe` driver, ReBAR on.
-- The iGPU (UHD P630) and NVIDIA Quadro P2000 are not used.
 - SYCL/Docker needs `--device /dev/dri` (the scripts handle group ids).
 
 ## Quick start
@@ -65,6 +64,23 @@ location (`env.sh`, `bashrc.llm`), and everything they need is inside it
   `llama-server`) and the shared `Qwen3.8-27B-Q4_K_M.gguf` in
   `~/.lmstudio/models/…`; SYCL uses the same GGUF (override `LLAMA_GGUF`).
 - **opencode** — optional, for the OpenAI-compatible providers.
+
+**Install the dependencies (Ubuntu — 26.04 tested):**
+
+```bash
+sudo apt update
+sudo apt install -y docker.io python3 pipx intel-gpu-tools
+sudo usermod -aG docker,render,video "$USER"           # takes effect next login
+pipx install "huggingface_hub[cli]" && pipx ensurepath # provides `hf`
+```
+
+- No GPU driver install needed — `xe` is in-kernel; only ReBAR in BIOS matters.
+- Skip `render`/`video` if they don't exist yet (`getent group render video`).
+- `intel-gpu-tools` only provides the optional `intel_gpu_top` monitor; full B70
+  telemetry (power/VRAM) comes from the container:
+  `docker exec vllm-b70 xpu-smi stats -d 0`.
+- Not in apt: **LM Studio** (Vulkan backend + shared GGUF — from lmstudio.ai) and
+  **opencode** (`curl -fsSL https://opencode.ai/install | bash`).
 
 **Migrate:**
 
