@@ -1,0 +1,135 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "model": "vllm/qwen",
+  "provider": {
+    "vllm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "vLLM",
+      "options": {
+        "baseURL": "http://127.0.0.1:8001/v1"
+      },
+      "models": {
+        "qwen": {
+          "name": "Qwen3.8-27B INT4",
+          "limit": {
+            "context": 131072,
+            "output": 32768
+          },
+          "variants": {
+            "off": {
+              "chat_template_kwargs": {
+                "enable_thinking": false
+              }
+            },
+            "low": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "low"
+              }
+            },
+            "medium": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "medium"
+              }
+            },
+            "xhigh": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "xhigh"
+              }
+            }
+          }
+        }
+      }
+    },
+    "sycl": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "SYCL",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1"
+      },
+      "models": {
+        "qwen": {
+          "name": "Qwen3.8-27B Q4_K_M",
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          },
+          "variants": {
+            "off": {
+              "chat_template_kwargs": {
+                "enable_thinking": false
+              }
+            },
+            "low": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "low"
+              }
+            },
+            "medium": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "medium"
+              }
+            },
+            "xhigh": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "xhigh"
+              }
+            }
+          }
+        }
+      }
+    },
+    "vulkan": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Vulkan",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1"
+      },
+      "models": {
+        "qwen": {
+          "name": "Qwen3.8-27B Q4_K_M",
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          },
+          "variants": {
+            "off": {
+              "chat_template_kwargs": {
+                "enable_thinking": false
+              }
+            },
+            "low": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "low"
+              }
+            },
+            "medium": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "medium"
+              }
+            },
+            "xhigh": {
+              "chat_template_kwargs": {
+                "enable_thinking": true,
+                "reasoning_effort": "xhigh"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "permission": {
+    "external_directory": {
+      "*": "ask"
+    }
+  }
+}

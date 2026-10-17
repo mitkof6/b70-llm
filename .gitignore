@@ -1,0 +1,13 @@
+# Large local artifacts — re-downloadable / re-creatable, never commit
+models/
+images/
+llama-sycl/
+
+# Runtime logs
+*.log
+
+# Secrets — this config contains your OpenRouter API key; keep it local only
+config/opencode.global.jsonc
+
+# Python bytecode from running the benchmarks
+__pycache__/

@@ -1,0 +1,24 @@
+# Intel Arc Pro B70 inference workflow — sourced from ~/.bashrc
+# Relocatable: LLM_DIR is the folder containing this file.
+LLM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LLM_DIR
+[ -f "$LLM_DIR/env.sh" ] && . "$LLM_DIR/env.sh"
+
+# vLLM XPU (best at concurrency; default server)
+alias b70-vllm-download="$LLM_DIR/download_model.sh"
+alias b70-vllm="$LLM_DIR/serve_vllm.sh"        # MTP4 + patches (~78 t/s)
+alias b70-vllm-bench="$LLM_DIR/bench_vllm.sh"
+alias b70-vllm-logs='docker logs -f vllm-b70'
+alias b70-vllm-stop='docker rm -f vllm-b70'
+
+# llama.cpp — both stop vLLM first (single card). SYCL is the fastest single-stream.
+alias b70-sycl="$LLM_DIR/serve_sycl.sh"      # SYCL + MTP n=2  (~34 t/s)
+alias b70-sycl-stop='docker rm -f llama-sycl'
+alias b70-sycl-logs='docker logs -f llama-sycl'
+alias b70-vulkan="$LLM_DIR/serve_vulkan.sh"  # Vulkan + MTP n=1 (~16 t/s)
+alias b70-vulkan-bench="$LLM_DIR/bench_vulkan.sh"
+alias b70-vulkan-stop='pkill -x llama-server'
+alias b70-vulkan-logs='tail -f $LLM_DIR/llama-server.log'
+
+# Show which backend is currently serving
+alias b70-what="$LLM_DIR/status.sh"
