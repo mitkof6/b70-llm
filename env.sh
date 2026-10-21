@@ -14,6 +14,11 @@ export MODEL_REPO="SergiioB/Qwen3.8-27B-GPTQ-Int4-sym-G128-MTP-BF16"
 export MODEL_NAME="Qwen3.8-27B-GPTQ-Int4-sym-G128-MTP-BF16"
 export MODEL_DIR="${MODELS_DIR}/${MODEL_NAME}"
 
+# --- Unified client port ---
+# All three backends serve the same port, so Claude Code / opencode configs
+# never change when switching backend (only one backend runs at a time).
+export LLM_PORT="${LLM_PORT:-8001}"
+
 # --- vLLM container ---
 # vllm/vllm-openai-xpu (vLLM 0.27.2rc1.dev77 + vllm-xpu-kernels 0.1.12.3),
 # pinned to the digest benchmarked for Qwen3.8-27B + MTP on the B70.
@@ -21,15 +26,19 @@ export VLLM_IMAGE="vllm/vllm-openai-xpu@sha256:f01e24f6c7ff01f1e0662234255a13722
 # Local archive of the image so it never needs re-pulling (docker load -i):
 #   ${LLM_DIR}/images/vllm-openai-xpu-f01e24f6.tar
 export VLLM_CONTAINER="vllm-b70"
-export VLLM_PORT="8001"
+export VLLM_PORT="$LLM_PORT"
 export VLLM_SERVED_NAME="qwen"
+# MTP draft depth. 4 is the benchmark recipe (~78 t/s) but crashes EngineCore
+# when requests overlap (vllm-xpu-kernels#510). Use 0 for parallel clients,
+# including Claude Code (it issues overlapping background requests).
+export VLLM_MTP_N="${VLLM_MTP_N:-4}"
 
 # --- llama.cpp (LM Studio's bundled Vulkan runtime), GGUF path ---
 # llama.cpp and vLLM cannot share the 32 GB card; serve_vulkan.sh stops vLLM first.
 # Newest bundled llama.cpp Vulkan runtime from LM Studio (override: LLAMA_SERVER=...).
 export LLAMA_SERVER="${LLAMA_SERVER:-$(ls -1 "$HOME"/.lmstudio/extensions/backends/llama.cpp-linux-x86_64-vulkan-avx2-*/llama-server 2>/dev/null | sort -V | tail -1)}"
 export LLAMA_GGUF="${LLAMA_GGUF:-$HOME/.lmstudio/models/lmstudio-community/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf}"
-export LLAMA_PORT="${LLAMA_PORT:-8080}"
+export LLAMA_PORT="$LLM_PORT"
 # Vulkan device index of the B70 (0=iGPU UHD P630, 1=Quadro P2000, 2=BMG G31).
 export GGML_VK_VISIBLE_DEVICES="${GGML_VK_VISIBLE_DEVICES:-2}"
 # OpenAI model id both llama.cpp servers advertise (set with --alias).

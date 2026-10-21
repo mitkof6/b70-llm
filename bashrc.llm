@@ -7,6 +7,7 @@ export LLM_DIR
 # vLLM XPU (best at concurrency; default server)
 alias b70-vllm-download="$LLM_DIR/download_model.sh"
 alias b70-vllm="$LLM_DIR/serve_vllm.sh"        # MTP4 + patches (~78 t/s)
+alias b70-vllm-claude="VLLM_MTP_N=0 $LLM_DIR/serve_vllm.sh"  # concurrency-safe for Claude Code
 alias b70-vllm-bench="$LLM_DIR/bench_vllm.sh"
 alias b70-vllm-logs='docker logs -f vllm-b70'
 alias b70-vllm-stop='docker rm -f vllm-b70'

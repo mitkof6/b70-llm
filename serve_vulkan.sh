@@ -25,6 +25,8 @@ echo "Starting llama-server (Vulkan, MTP n=1) -> $LOG"
 setsid env GGML_VK_VISIBLE_DEVICES="$GGML_VK_VISIBLE_DEVICES" "$LLAMA_SERVER" \
   -m "$LLAMA_GGUF" \
   -ngl 999 -c 262144 --cache-type-k q4_0 --cache-type-v q4_0 -fa on \
+  --jinja \
+  --chat-template-file "$DIR/patches/qwen3.8-claude.jinja" \
   --spec-type draft-mtp --spec-draft-n-max 1 \
   --alias "$LLAMA_ALIAS" \
   --host 127.0.0.1 --port "$LLAMA_PORT" \

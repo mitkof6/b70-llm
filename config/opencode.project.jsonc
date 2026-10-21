@@ -48,7 +48,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "SYCL",
       "options": {
-        "baseURL": "http://127.0.0.1:8080/v1"
+        "baseURL": "http://127.0.0.1:8001/v1"
       },
       "models": {
         "qwen": {
@@ -89,7 +89,7 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "Vulkan",
       "options": {
-        "baseURL": "http://127.0.0.1:8080/v1"
+        "baseURL": "http://127.0.0.1:8001/v1"
       },
       "models": {
         "qwen": {

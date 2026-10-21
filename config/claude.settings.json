@@ -1,0 +1,22 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8001",
+    "ANTHROPIC_AUTH_TOKEN": "local",
+    "ANTHROPIC_MODEL": "qwen",
+    "ANTHROPIC_SMALL_FAST_MODEL": "qwen",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME": "Qwen3.8-27B (B70)",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME": "Qwen3.8-27B (B70)",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME": "Qwen3.8-27B (B70)",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "131072"
+  },
+  "model": "qwen",
+  "availableModels": [
+    "qwen"
+  ],
+  "theme": "dark",
+  "tui": "fullscreen"
+}

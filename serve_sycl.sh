@@ -26,9 +26,12 @@ docker run -d --name "$LLAMA_SYCL_CONTAINER" \
   --group-add "$RENDER_GID" --group-add "$VIDEO_GID" \
   -p 127.0.0.1:${LLAMA_PORT}:${LLAMA_PORT} \
   -v "$GGUF_DIR":/models:ro \
+  -v "$DIR/patches":/patches:ro \
   "$LLAMA_SYCL_IMAGE" \
     -m "/models/$GGUF_NAME" \
     -ngl 999 -c 262144 --cache-type-k q4_0 --cache-type-v q4_0 -fa on \
+    --jinja \
+    --chat-template-file /patches/qwen3.8-claude.jinja \
     --alias "$LLAMA_ALIAS" \
     --spec-type draft-mtp --spec-draft-n-max "$LLAMA_SYCL_SPEC_N_MAX" \
     --host 0.0.0.0 --port "$LLAMA_PORT" >/dev/null

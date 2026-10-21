@@ -6,8 +6,8 @@ a time** — each `serve_*` script stops the others first.
 
 | Backend                          | Port | Use it for                       |
 | -------------------------------- | ---- | -------------------------------- |
-| llama.cpp **SYCL** (Docker)      | 8080 | Fastest llama.cpp (**~34 t/s**)     |
-| llama.cpp **Vulkan** (LM Studio) | 8080 | Fast llama.cpp, no extra image      |
+| llama.cpp **SYCL** (Docker)      | 8001 | Fastest llama.cpp (**~34 t/s**)     |
+| llama.cpp **Vulkan** (LM Studio) | 8001 | Fast llama.cpp, no extra image      |
 | **vLLM XPU** (Docker)            | 8001 | Fastest overall (**~78 t/s** with MTP4); concurrency needs MTP off |
 
 ## Hardware
@@ -20,11 +20,12 @@ a time** — each `serve_*` script stops the others first.
 ```bash
 source ~/.bashrc            # loads aliases (b70-*) and env.sh
 
-b70-sycl                    # fastest llama.cpp: SYCL + MTP  -> :8080
+b70-sycl                    # fastest llama.cpp: SYCL + MTP  -> :8001
 #   or
 b70-vllm                    #    vLLM XPU (concurrent)         -> :8001
+b70-vllm-claude             #    vLLM, MTP off (Claude Code)   -> :8001
 #   or
-b70-vulkan                  #    llama.cpp Vulkan + MTP        -> :8080
+b70-vulkan                  #    llama.cpp Vulkan + MTP        -> :8001
 
 b70-vulkan-bench 256 1      # benchmark whatever llama.cpp server is up
 b70-vllm-bench 512 3        # benchmark vLLM (max_tokens, concurrency)
@@ -92,10 +93,11 @@ pipx install "huggingface_hub[cli]" && pipx ensurepath # provides `hf`
 3. Add the aliases: append `source ~/b70-llm/bashrc.llm` to `~/.bashrc`.
 4. opencode: `cp ~/b70-llm/config/opencode.global.jsonc ~/.config/opencode/opencode.jsonc`
    (it contains your OpenRouter API key — keep it private).
-5. Fetch the model: `./download_model.sh` (~19 GB, resumable).
-6. Start: `b70-vllm` (first compile ~4 min, later starts ~2 min) or `b70-sycl`
+5. Claude Code: `mkdir -p ~/.claude && cp ~/b70-llm/config/claude.settings.json ~/.claude/settings.json`.
+6. Fetch the model: `./download_model.sh` (~19 GB, resumable).
+7. Start: `b70-vllm` (first compile ~4 min, later starts ~2 min) or `b70-sycl`
    (the SYCL image is pulled automatically from ghcr).
-7. Verify: `b70-what`, then `./bench_vllm.sh 128 1`.
+8. Verify: `b70-what`, then `./bench_vllm.sh 128 1`.
 
 Machine-specific values can be overridden via environment variables:
 `LLAMA_SERVER`, `LLAMA_GGUF`, `GGML_VK_VISIBLE_DEVICES` (the Vulkan device index
@@ -147,19 +149,19 @@ Decode speed, single stream unless noted, on this B70 + Qwen3.8-27B:
 | File                  | Purpose                                                       |
 | --------------------- | ------------------------------------------------------------- |
 | `env.sh`              | Shared paths, image tags, device ids. Sourced by all scripts.  |
-| `serve_sycl.sh`       | Start llama.cpp SYCL (Docker + MTP) on :8080.                   |
+| `serve_sycl.sh`       | Start llama.cpp SYCL (Docker + MTP) on :8001.                   |
 | `status.sh`           | Show which backend is currently serving.                        |
-| `serve_vulkan.sh`     | Start llama.cpp Vulkan (LM Studio runtime + MTP) on :8080.      |
-| `serve_vllm.sh`       | Start the vLLM XPU container on :8001.                          |
+| `serve_vulkan.sh`     | Start llama.cpp Vulkan (LM Studio runtime + MTP) on :8001.      |
+| `serve_vllm.sh`       | Start vLLM on :8001 and wait until it is ready.                  |
 | `bench_vulkan.sh`     | Benchmark a llama.cpp server: `./bench_vulkan.sh [max_tokens] [conc]`. |
 | `bench_vllm.sh`       | Benchmark vLLM: `./bench_vllm.sh [max_tokens] [concurrency]`.   |
 | `bench_vllm_stream.sh` | Article-style single-stream bench (post-first-token).          |
 | `download_model.sh`   | Resumable/retrying HF download of the INT4 vLLM checkpoint.     |
 | `benchmarks/`         | Cookbook realworld harness, prompt generator, p512 prompts.     |
-| `patches/`            | Cookbook MTP patches (BF16-draft gate + 131072 boundary).       |
+| `patches/`            | Cookbook MTP patches + `qwen3.8-claude.jinja` (Claude Code template). |
 | `images/`             | Docker-save archive of the pinned vLLM image (4.65 GB).         |
 | `bashrc.llm`          | Aliases + env; sourced from `~/.bashrc`.                        |
-| `config/`             | Archive of the opencode configs (global + former project-local). |
+| `config/`             | Archive of opencode + Claude Code configs.                      |
 | `AGENTS.md`           | Notes for coding agents (this project's `instructions`).        |
 | `LOGS.md`             | Line-by-line log field guide (vLLM + llama.cpp).                |
 
@@ -176,19 +178,90 @@ Decode speed, single stream unless noted, on this B70 + Qwen3.8-27B:
 
 The three servers are registered as OpenAI-compatible providers in the global
 opencode config (`~/.config/opencode/opencode.jsonc`; archived copy in
-`config/`):
+`config/`). All of them use the **same** base URL, because only one backend runs
+at a time:
 
 - `vllm/qwen` → `http://127.0.0.1:8001/v1`
-- `sycl/qwen` → `http://127.0.0.1:8080/v1`
-- `vulkan/qwen` → `http://127.0.0.1:8080/v1`
-  (SYCL and Vulkan share :8080; the running llama.cpp backend answers both)
+- `sycl/qwen` → `http://127.0.0.1:8001/v1`
+- `vulkan/qwen` → `http://127.0.0.1:8001/v1`
 - every model offers `off` / `low` / `medium` / `xhigh` thinking variants
   (`enable_thinking` + `reasoning_effort` template kwargs)
 
 Start the backend you want, then run `opencode` from any folder. Config is not
 hot-reloaded — restart opencode after changing the config. Switch model and
-variant with the picker in the TUI; the one you pick answers only if its server
-is running.
+variant with the picker in the TUI; the running backend answers on :8001.
+
+## Use from Claude Code
+
+Claude Code speaks the Anthropic Messages API, which vLLM and llama.cpp both
+serve on the unified port, so the same config works with any backend. The live
+config is `~/.claude/settings.json` (B70 template:
+`config/claude.settings.json`; the previous LM Studio config is preserved as
+`config/claude.settings.backup.json`):
+
+```jsonc
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8001",
+    "ANTHROPIC_AUTH_TOKEN": "local",
+    "ANTHROPIC_MODEL": "qwen",
+    "ANTHROPIC_SMALL_FAST_MODEL": "qwen",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "131072"
+  },
+  "model": "qwen",
+  "availableModels": ["qwen"]
+}
+```
+
+Start it with `claude` (or `claude --model qwen`). Do **not** pass
+`--model sonnet`/`opus`: Claude Code resolves those to Anthropic catalog ids
+(`claude-sonnet-5`), which vLLM rejects even though the `ANTHROPIC_DEFAULT_*`
+values are set. The `[claude-code:unrecognized_model]` warning is expected.
+
+Why the extra knobs:
+
+- `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` stops the background
+  session-title request. It overlaps the main request and would trigger the MTP4
+  EngineCore crash (see Gotchas).
+- `CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072` matches vLLM's `--max-model-len` (SYCL
+  could do 262144, but the shared config must stay within vLLM's limit).
+- `patches/qwen3.8-claude.jinja` is the model's own template with the hard
+  assertions relaxed: Claude Code ≥2.1.154 injects extra `role:"system"` messages
+  mid-conversation and sends tool-result-only turns, both of which the stock
+  Qwen3.8 template rejects (llama.cpp #27367). Both `serve_*` families load it.
+
+Tool use needs `--jinja` on llama.cpp (set in `serve_sycl.sh` /
+`serve_vulkan.sh`) and `--enable-auto-tool-choice --tool-call-parser qwen3_coder`
+on vLLM (set in `serve_vllm.sh`). Restart Claude Code after switching backend or
+editing the config.
+
+**vLLM + Claude Code needs MTP off.** Claude Code sends overlapping requests
+(tool loops, background calls), and MTP4 kills EngineCore even in a normal
+session. Start it with `b70-vllm-claude` (or `VLLM_MTP_N=0 ./serve_vllm.sh`,
+~30 t/s). SYCL (~34 t/s) and Vulkan both tolerate the overlap and keep MTP.
+
+### vLLM startup time (MTP on / off)
+
+`serve_vllm.sh` now blocks until `Application startup complete`. Measured here:
+
+- a mode whose compile cache is cold pays torch.compile: up to ~12 min on the
+  first start (Dynamo ~68 s + graph compile ~330 s);
+- later starts in the **same** mode: ~3.5–6 min (compile cache hit, ~4 s; warm
+  page cache helps the weight load);
+- MTP4 and no-MTP use different compile keys, so each pays the cold start once;
+  after that, switching modes only costs the warm restart;
+- the fixed part (~3.5–5 min) is Python/XCCL init (~2.5 min), weight load
+  (~27–42 s), Triton warmup (~50 s) and graph capture (~30 s);
+- `--enforce-eager` skips compile but drops decode to **~4 t/s** — not usable.
+
+Keep the `vllm-compile-cache` volume and avoid changing compile-relevant flags
+(`--max-model-len`, `--max-num-seqs`, `--max-num-batched-tokens`,
+`--kv-cache-dtype`, MTP) or the cache key changes and the next start recompiles.
+If fast restarts matter more than throughput, use SYCL (starts in ~1 min).
 
 ## Gotchas
 
@@ -203,6 +276,8 @@ is running.
 - The eduroam link is throttled; the vLLM image / 4.3 GB SYCL image take a while
   to pull, and `hf` downloads may take hours (they resume).
 - MTP4 is **single-stream only** on this stack: overlapping requests can kill
-  EngineCore (vllm-xpu-kernels#510). `serve_vllm.sh` mirrors the cookbook's bench
-  config (`--no-enable-prefix-caching`); interactive serving wants cache on + the
-  APC patches.
+  EngineCore (vllm-xpu-kernels#510). `serve_vllm.sh` runs MTP4 by default; set
+  `VLLM_MTP_N=0` for parallel clients or subagents (~30 t/s, concurrency-safe).
+  `serve_vllm.sh` mirrors the cookbook's bench config
+  (`--no-enable-prefix-caching`); interactive serving wants cache on + the APC
+  patches.
