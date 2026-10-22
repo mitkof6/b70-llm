@@ -12,12 +12,9 @@ source "$DIR/env.sh"
 [ -x "$LLAMA_SERVER" ] || { echo "llama-server not found: $LLAMA_SERVER" >&2; exit 1; }
 [ -f "$LLAMA_GGUF" ] || { echo "GGUF not found: $LLAMA_GGUF" >&2; exit 1; }
 
-# Free the GPU (llama.cpp needs the full card).
-if [ -n "$(docker ps -q --filter "name=^${VLLM_CONTAINER}$" 2>/dev/null)" ]; then
-  echo "Stopping vLLM container '$VLLM_CONTAINER' to free the B70..."
-  docker stop "$VLLM_CONTAINER" >/dev/null
-fi
-pkill -x llama-server 2>/dev/null || true
+# Free the GPU (llama.cpp needs the full card): the vLLM/SYCL containers and
+# any other host llama-server (this one).
+stop_other_backends vulkan
 sleep 2
 
 LOG="${LLM_DIR}/llama-server.log"
@@ -36,6 +33,11 @@ disown
 echo "Waiting for model load (B70 pinned via GGML_VK_VISIBLE_DEVICES=$GGML_VK_VISIBLE_DEVICES)..."
 for _ in $(seq 1 60); do
   sleep 5
+  if ! pgrep -x llama-server >/dev/null 2>&1; then
+    echo "llama-server died during startup; last log lines:" >&2
+    tail -40 "$LOG" >&2 || true
+    exit 1
+  fi
   if grep -q 'listening on' "$LOG"; then
     echo "Ready on http://127.0.0.1:${LLAMA_PORT}  (follow: tail -f $LOG)"
     exit 0

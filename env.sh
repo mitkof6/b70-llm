@@ -26,7 +26,7 @@ export VLLM_IMAGE="vllm/vllm-openai-xpu@sha256:f01e24f6c7ff01f1e0662234255a13722
 # Local archive of the image so it never needs re-pulling (docker load -i):
 #   ${LLM_DIR}/images/vllm-openai-xpu-f01e24f6.tar
 export VLLM_CONTAINER="vllm-b70"
-export VLLM_PORT="$LLM_PORT"
+export VLLM_PORT="${VLLM_PORT:-$LLM_PORT}"
 export VLLM_SERVED_NAME="qwen"
 # MTP draft depth. 4 is the benchmark recipe (~78 t/s) but crashes EngineCore
 # when requests overlap (vllm-xpu-kernels#510). Use 0 for parallel clients,
@@ -38,7 +38,7 @@ export VLLM_MTP_N="${VLLM_MTP_N:-4}"
 # Newest bundled llama.cpp Vulkan runtime from LM Studio (override: LLAMA_SERVER=...).
 export LLAMA_SERVER="${LLAMA_SERVER:-$(ls -1 "$HOME"/.lmstudio/extensions/backends/llama.cpp-linux-x86_64-vulkan-avx2-*/llama-server 2>/dev/null | sort -V | tail -1)}"
 export LLAMA_GGUF="${LLAMA_GGUF:-$HOME/.lmstudio/models/lmstudio-community/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf}"
-export LLAMA_PORT="$LLM_PORT"
+export LLAMA_PORT="${LLAMA_PORT:-$LLM_PORT}"
 # Vulkan device index of the B70 (0=iGPU UHD P630, 1=Quadro P2000, 2=BMG G31).
 export GGML_VK_VISIBLE_DEVICES="${GGML_VK_VISIBLE_DEVICES:-2}"
 # OpenAI model id both llama.cpp servers advertise (set with --alias).
@@ -54,6 +54,22 @@ export LLAMA_SYCL_SPEC_N_MAX="${LLAMA_SYCL_SPEC_N_MAX:-2}"
 # --- Intel Arc device ids (for docker --group-add) ---
 export RENDER_GID="$(getent group render | cut -d: -f3)"
 export VIDEO_GID="$(getent group video | cut -d: -f3)"
+
+# --- Single-card invariant ---
+# Only one backend fits the 32 GB card: stop every backend except $1
+# (vllm | sycl | vulkan) so the caller owns the GPU and the port. rm -f (not
+# docker stop) on vLLM: its --stop-timeout 120 would stall a switch up to 2 min.
+stop_other_backends() {
+  local me="$1" c
+  for c in "$VLLM_CONTAINER" "$LLAMA_SYCL_CONTAINER"; do
+    [ "$c" = "$me" ] && continue
+    if [ -n "$(docker ps -q --filter "name=^${c}$" 2>/dev/null)" ]; then
+      echo "Stopping '$c' to free the B70..."
+      docker rm -f "$c" >/dev/null 2>&1 || true
+    fi
+  done
+  pkill -x llama-server 2>/dev/null || true
+}
 
 # --- Hugging Face CLI (hf). Override with HF=/path/to/hf ---
 if [ -z "${HF:-}" ]; then

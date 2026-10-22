@@ -2,6 +2,10 @@
 # Article-style decode benchmark for a running vLLM server (warm, single request):
 # client-side post-first-token decode tok/s, matching jonathanmann.tech's B70 table
 # (p~512/g128, one warmup + N runs, median).
+# NOTE: the repeated filler prompt below is deliberate (it reproduces that
+# article's methodology) but collapses MTP acceptance to ~50%, so with MTP4 on
+# these numbers run well below the harness headline (77.7 t/s on realistic
+# prompts; see benchmarks/b70-realworld-context-harness.py).
 # Usage: ./bench_vllm_stream.sh [gen_tokens] [runs] [think: on|off|both] [sampling: greedy|modelcard]
 #   modelcard = Qwen3.8-27B recommended presets, paired with the thinking switch
 #   as in the cookbook (thinking 1.0/0.95/20/0 | non-thinking 0.7/0.80/20/1.5).

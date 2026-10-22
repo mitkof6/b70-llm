@@ -8,7 +8,7 @@ a time** — each `serve_*` script stops the others first.
 | -------------------------------- | ---- | -------------------------------- |
 | llama.cpp **SYCL** (Docker)      | 8001 | Fastest llama.cpp (**~34 t/s**)     |
 | llama.cpp **Vulkan** (LM Studio) | 8001 | Fast llama.cpp, no extra image      |
-| **vLLM XPU** (Docker)            | 8001 | Fastest overall (**~78 t/s** with MTP4); concurrency needs MTP off |
+| **vLLM XPU** (Docker)            | 8001 | Fastest overall (**~78 t/s** with MTP4); overlap needs v5 or MTP off |
 
 ## Hardware
 
@@ -23,7 +23,7 @@ source ~/.bashrc            # loads aliases (b70-*) and env.sh
 b70-sycl                    # fastest llama.cpp: SYCL + MTP  -> :8001
 #   or
 b70-vllm                    #    vLLM XPU (concurrent)         -> :8001
-b70-vllm-claude             #    vLLM, MTP off (Claude Code)   -> :8001
+b70-vllm-claude             #    vLLM, MTP off + prefix cache   -> :8001
 #   or
 b70-vulkan                  #    llama.cpp Vulkan + MTP        -> :8001
 
@@ -48,8 +48,9 @@ b70-what                             # show which backend is currently live
 
 The folder is **relocatable** — scripts derive their paths from their own
 location (`env.sh`, `bashrc.llm`), and everything they need is inside it
-(patches, benchmark prompts, opencode config archive, vLLM image tar). Models
-(~19 GB) are re-downloadable.
+(patches, benchmark prompts, opencode config archive). The pinned vLLM image
+tar under `images/` is optional (gitignored) — Docker pulls it if absent.
+Models (~19 GB) are re-downloadable.
 
 **On a new PC you need:**
 
@@ -117,6 +118,7 @@ Decode speed, single stream unless noted, on this B70 + Qwen3.8-27B:
 | llama.cpp Vulkan + MTP `n=2`                    | 15.1         |
 | llama.cpp Vulkan, no MTP                        | 11.7         |
 | **vLLM XPU + MTP4**, C1 (patched, cache off)    | **77.7**     |
+| vLLM XPU + MTP4 + APC + v5, C1 (thinking on)    | 66.8         |
 | vLLM XPU, no-spec, single stream                | 30.4         |
 | vLLM XPU, no-spec, concurrency 3 (aggregate)    | 30.6         |
 
@@ -126,7 +128,8 @@ Decode speed, single stream unless noted, on this B70 + Qwen3.8-27B:
   ~78 tok/s vs llama.cpp SYCL ~34. llama.cpp stays useful as a no-patch-stack,
   no-extra-container fallback.
 - Many parallel requests → **vLLM** (llama.cpp has no continuous batching here).
-  MTP4 is single-stream only on this stack (see Gotchas).
+  MTP4 needs the v5 split for overlap, otherwise it is single-stream only (see
+  Gotchas).
 - **MTP** (speculative decoding) is the single biggest win: vLLM 30 → 78 tok/s
   with MTP4; llama.cpp best depth is `n=1` on Vulkan / `n=2` on SYCL.
 - vLLM C1 number: p512/g128 greedy, cache off, cookbook realworld harness, n=5
@@ -144,6 +147,46 @@ Decode speed, single stream unless noted, on this B70 + Qwen3.8-27B:
   meta-commentary and collapses MTP acceptance to ~50% (~49 t/s). Always bench
   with realistic prompts (the `benchmarks/` harness).
 
+**Prefix caching (interactive, MTP off).** `VLLM_PREFIX_CACHING=1` enables vLLM's
+APC; hybrid GDN then runs `mamba_cache_mode="align"`, so `serve_vllm.sh` also
+applies the cookbook's three correctness fixes (`patch_fix_accepted_sync.py`,
+`patch_fix_backward_copy.py`, `patch_fix_eagle_drop.py` — silent-corruption bugs
+vllm#53919/#48375/#53505). Measured here with a 32.7k-token prompt, same request
+three times, `max_tokens=1`:
+
+| run | TTFT (+1 token) | prefix hit rate |
+| --- | --- | --- |
+| cold | 20.58 s | 0% |
+| warm | 0.83 s | 97.9% |
+| warm | 0.77 s | 97.9% |
+
+Decode is unchanged (~30 t/s no-MTP); the win is per-turn prefill latency.
+The KV pool shrinks to 6.95 GiB / 211k tokens (align padding; was 8.36 GiB /
+263k), still ample for a single agent context. Multi-session concurrent reuse is
+much weaker (model card: 0–38% hits).
+
+**Prefix caching + MTP4 (overlap-safe).** `b70-vllm-claude-mtp` turns on cache
+*and* the v5 mixed-batch split (`VLLM_MIXED_SPLIT=1`), which makes MTP4 survive
+overlapping requests instead of killing EngineCore (#510). Measured 2026-10-22:
+
+| Test | Result |
+| ---- | ------ |
+| Realworld p512/g128, thinking on, n=5 | median 66.8 t/s (65.7–68.8), acceptance 91–98% |
+| `bench_vllm.sh 512 3` | 87.2 t/s aggregate (29–31 per request) |
+| 3 mixed concurrent requests (32k prefill + decode + short) | all 200, no fatal, `Waiting: 0` |
+| Warm TTFT, 32.7k prompt | cold 23.35 s → warm 5.03 s, 81.4% hits |
+| Real Claude Code (Read, then multi-turn Write) | correct, acceptance 81–85%, no errors |
+
+Cache-on + v5 costs ~13% decode vs cache-off (66.8 vs 77.7) and warm prefill is
+~5 s / 81% rather than the MTP-off 0.8 s / 98% — still ~18 s faster than cold.
+The KV pool with MTP4 + cache is 5.68 GiB / 141,882 tokens (1.08x at 131k), so a
+single 32k agent context fits comfortably; very large contexts can crowd it.
+
+Note the headline 77.7 cell was measured **with thinking on**. The server now
+defaults to `enable_thinking: false`; the committed `benchmarks/prompts/` were
+calibrated thinking-on, so the harness reports `expected 512, got 472` unless the
+request sets `chat_template_kwargs` to match.
+
 ## Files
 
 | File                  | Purpose                                                       |
@@ -158,7 +201,7 @@ Decode speed, single stream unless noted, on this B70 + Qwen3.8-27B:
 | `bench_vllm_stream.sh` | Article-style single-stream bench (post-first-token).          |
 | `download_model.sh`   | Resumable/retrying HF download of the INT4 vLLM checkpoint.     |
 | `benchmarks/`         | Cookbook realworld harness, prompt generator, p512 prompts.     |
-| `patches/`            | Cookbook MTP patches + `qwen3.8-claude.jinja` (Claude Code template). |
+| `patches/`            | Cookbook MTP + APC correctness patches + `qwen3.8-claude.jinja` (Claude Code template). |
 | `images/`             | Docker-save archive of the pinned vLLM image (4.65 GB).         |
 | `bashrc.llm`          | Aliases + env; sourced from `~/.bashrc`.                        |
 | `config/`             | Archive of opencode + Claude Code configs.                      |
@@ -225,8 +268,8 @@ values are set. The `[claude-code:unrecognized_model]` warning is expected.
 Why the extra knobs:
 
 - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` stops the background
-  session-title request. It overlaps the main request and would trigger the MTP4
-  EngineCore crash (see Gotchas).
+  session-title request. It overlaps the main request and crashed MTP4 without
+  v5; with `b70-vllm-claude-mtp` it is optional, but still saves a request.
 - `CLAUDE_CODE_MAX_CONTEXT_TOKENS=131072` matches vLLM's `--max-model-len` (SYCL
   could do 262144, but the shared config must stay within vLLM's limit).
 - `patches/qwen3.8-claude.jinja` is the model's own template with the hard
@@ -239,10 +282,14 @@ Tool use needs `--jinja` on llama.cpp (set in `serve_sycl.sh` /
 on vLLM (set in `serve_vllm.sh`). Restart Claude Code after switching backend or
 editing the config.
 
-**vLLM + Claude Code needs MTP off.** Claude Code sends overlapping requests
-(tool loops, background calls), and MTP4 kills EngineCore even in a normal
-session. Start it with `b70-vllm-claude` (or `VLLM_MTP_N=0 ./serve_vllm.sh`,
-~30 t/s). SYCL (~34 t/s) and Vulkan both tolerate the overlap and keep MTP.
+**vLLM + Claude Code: MTP off, or MTP4 + cache + v5.** Claude Code sends
+overlapping requests (tool loops, background calls), and plain MTP4 kills
+EngineCore even in a normal session. Verified 2026-10-22: `b70-vllm-claude-mtp`
+(MTP4 + prefix cache + `VLLM_MIXED_SPLIT=1`) survives mixed 32k-prefill + decode
+traffic and a real multi-turn Claude Code session, at ~67 t/s and ~5 s warm
+prefill. `b70-vllm-claude` (MTP off, ~30 t/s, warm prefill <1 s) is the safer
+fallback if anything regresses. SYCL (~34 t/s) and Vulkan also tolerate the
+overlap and keep MTP.
 
 ### vLLM startup time (MTP on / off)
 
@@ -273,11 +320,16 @@ If fast restarts matter more than throughput, use SYCL (starts in ~1 min).
 - The standalone llama.cpp SYCL tarball does **not** run here — use the
   `ghcr.io/ggml-org/llama.cpp:server-intel` image, which bundles the oneAPI
   runtime.
-- The eduroam link is throttled; the vLLM image / 4.3 GB SYCL image take a while
-  to pull, and `hf` downloads may take hours (they resume).
-- MTP4 is **single-stream only** on this stack: overlapping requests can kill
-  EngineCore (vllm-xpu-kernels#510). `serve_vllm.sh` runs MTP4 by default; set
-  `VLLM_MTP_N=0` for parallel clients or subagents (~30 t/s, concurrency-safe).
-  `serve_vllm.sh` mirrors the cookbook's bench config
-  (`--no-enable-prefix-caching`); interactive serving wants cache on + the APC
-  patches.
+- The network link here is throttled; the vLLM image / 4.3 GB SYCL image take a
+  while to pull, and `hf` downloads may take hours (they resume).
+- MTP4 is **single-stream only without v5**: overlapping requests can kill
+  EngineCore (vllm-xpu-kernels#510). `VLLM_MIXED_SPLIT=1` applies the v5
+  mixed-batch split, which is verified to tolerate overlap (see
+  `b70-vllm-claude-mtp`). Without it, set `VLLM_MTP_N=0` for parallel clients or
+  subagents (~30 t/s, concurrency-safe).
+- Prefix caching is opt-in (`VLLM_PREFIX_CACHING=1`; `b70-vllm-claude*` set it).
+  Default stays off to match the cookbook bench cell. On this hybrid GDN model
+  APC forces `mamba_cache_mode="align"`, hence the three `patch_fix_*` patches
+  that `serve_vllm.sh` applies when cache is on.
+  `b70-vllm-cache` is the MTP4 + cache combo **without** v5 and is unsafe under
+  overlap; use `b70-vllm-claude-mtp` instead.

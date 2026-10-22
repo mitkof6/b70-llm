@@ -16,7 +16,9 @@ if docker_running "$LLAMA_SYCL_CONTAINER"; then
   echo "llama.cpp SYCL - docker '$LLAMA_SYCL_CONTAINER' on http://127.0.0.1:${LLAMA_PORT}"
   found=1
 fi
-if pgrep -f "$LLAMA_SERVER" >/dev/null 2>&1; then
+# Guard: without LM Studio, $LLAMA_SERVER is set-but-empty and pgrep -f ""
+# matches every process (false "Vulkan running").
+if [ -n "$LLAMA_SERVER" ] && pgrep -f "$LLAMA_SERVER" >/dev/null 2>&1; then
   echo "llama.cpp Vulkan - host process 'llama-server' on http://127.0.0.1:${LLAMA_PORT}"
   found=1
 fi

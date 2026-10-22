@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Benchmark a running llama.cpp server: per-request and aggregate tok/s.
 # Usage: ./bench_vulkan.sh [max_output_tokens] [concurrency]
+# NOTE: the repeated filler prompt below degrades MTP acceptance to ~50%
+# (README: "Bench prompts matter hugely"). The llama.cpp numbers in the README
+# table were measured with this same prompt, so results stay comparable to the
+# table; realistic prompts would give higher MTP numbers.
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$DIR/env.sh"

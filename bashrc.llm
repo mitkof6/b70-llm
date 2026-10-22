@@ -2,12 +2,16 @@
 # Relocatable: LLM_DIR is the folder containing this file.
 LLM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LLM_DIR
-[ -f "$LLM_DIR/env.sh" ] && . "$LLM_DIR/env.sh"
+# if/then (not "[ -f ] && ."): the && form returns 1 when env.sh is missing,
+# which breaks `ssh host cmd` if this is the last line of .bashrc.
+if [ -f "$LLM_DIR/env.sh" ]; then . "$LLM_DIR/env.sh"; fi
 
 # vLLM XPU (best at concurrency; default server)
 alias b70-vllm-download="$LLM_DIR/download_model.sh"
 alias b70-vllm="$LLM_DIR/serve_vllm.sh"        # MTP4 + patches (~78 t/s)
-alias b70-vllm-claude="VLLM_MTP_N=0 $LLM_DIR/serve_vllm.sh"  # concurrency-safe for Claude Code
+alias b70-vllm-claude="VLLM_MTP_N=0 VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # cache on, MTP off
+alias b70-vllm-cache="VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache, no v5 (unstable on overlap)
+alias b70-vllm-claude-mtp="VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache + v5
 alias b70-vllm-bench="$LLM_DIR/bench_vllm.sh"
 alias b70-vllm-logs='docker logs -f vllm-b70'
 alias b70-vllm-stop='docker rm -f vllm-b70'

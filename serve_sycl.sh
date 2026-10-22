@@ -13,12 +13,17 @@ source "$DIR/env.sh"
 GGUF_DIR="$(dirname "$LLAMA_GGUF")"
 GGUF_NAME="$(basename "$LLAMA_GGUF")"
 
-# Free the GPU: vLLM and llama.cpp cannot coexist.
-if [ -n "$(docker ps -q --filter "name=^${VLLM_CONTAINER}$" 2>/dev/null)" ]; then
-  echo "Stopping vLLM container '$VLLM_CONTAINER' to free the B70..."
-  docker stop "$VLLM_CONTAINER" >/dev/null
-fi
-docker rm -f "$LLAMA_SYCL_CONTAINER" >/dev/null 2>&1 || true
+# Docker needs the user in render/video for /dev/dri; fail before stopping
+# anything, since a working backend must not be killed over a config error.
+[ -n "$RENDER_GID" ] && [ -n "$VIDEO_GID" ] || {
+  echo "Not in the 'render'/'video' groups (needed for /dev/dri in Docker)." >&2
+  echo "Fix: sudo usermod -aG render,video \"$USER\", then log out and back in." >&2
+  exit 1
+}
+
+# Free the GPU: only one backend fits the 32 GB card (vLLM, the other
+# llama.cpp runtime, and any host llama-server all go).
+stop_other_backends sycl
 
 echo "Starting llama.cpp SYCL ($LLAMA_SYCL_IMAGE), MTP n=$LLAMA_SYCL_SPEC_N_MAX -> port $LLAMA_PORT"
 docker run -d --name "$LLAMA_SYCL_CONTAINER" \
@@ -39,6 +44,11 @@ docker run -d --name "$LLAMA_SYCL_CONTAINER" \
 echo "Waiting for model load..."
 for _ in $(seq 1 90); do
   sleep 5
+  if [ -z "$(docker ps -q --filter "name=^${LLAMA_SYCL_CONTAINER}$" 2>/dev/null)" ]; then
+    echo "Container '$LLAMA_SYCL_CONTAINER' exited; last log lines:" >&2
+    docker logs --tail 40 "$LLAMA_SYCL_CONTAINER" 2>&1 >&2 || true
+    exit 1
+  fi
   if docker logs "$LLAMA_SYCL_CONTAINER" 2>&1 | grep -q 'listening on'; then
     echo "Ready on http://127.0.0.1:${LLAMA_PORT}  (logs: docker logs -f $LLAMA_SYCL_CONTAINER)"
     exit 0
