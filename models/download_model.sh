@@ -3,7 +3,14 @@
 # Safe to run repeatedly; hf resumes partial files.
 set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$DIR/env.sh"
+source "$DIR/../env.sh" || exit 1
+
+if [ "${MODEL_VLLM_READY:-0}" != "1" ] || [ -z "${MODEL_REPO:-}" ]; then
+  echo "$LLM_MODEL_LABEL has no vLLM/Hugging Face checkpoint configured (GGUF-only)." >&2
+  echo "Download it with LM Studio and point env.sh at it, or set LLM_MODEL=\"dense\"." >&2
+  echo "Expected GGUF: $LLAMA_GGUF" >&2
+  exit 1
+fi
 
 [ -n "$HF" ] && [ -x "$HF" ] || { echo "hf CLI not found. Install it (pipx install 'huggingface_hub[cli]') or set HF=/path/to/hf"; exit 1; }
 

@@ -11,7 +11,7 @@
 #   as in the cookbook (thinking 1.0/0.95/20/0 | non-thinking 0.7/0.80/20/1.5).
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$DIR/env.sh"
+source "$DIR/../env.sh" || exit 1
 
 MAXTOK="${1:-128}"
 RUNS="${2:-5}"

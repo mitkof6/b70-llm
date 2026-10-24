@@ -1,5 +1,8 @@
-# Large local artifacts — re-downloadable / re-creatable, never commit
-models/
+# Large local artifacts — re-downloadable / re-creatable, never commit.
+# models/* (not models/) so the tracked download_model.sh can be re-included
+# below while the multi-GB weight directories stay ignored.
+models/*
+!models/download_model.sh
 images/
 llama-sycl/
 

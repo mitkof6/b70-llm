@@ -66,8 +66,8 @@ Avg Draft acceptance rate: 35.8%
 The same counters are Prometheus metrics on `http://127.0.0.1:8001/metrics`
 (`vllm:spec_decode_*`, `vllm:num_requests_*`, `vllm:kv_cache_usage_perc`).
 
-## llama.cpp — `docker logs llama-sycl` / `tail -f llama-server.log`
+## llama.cpp — `docker logs llama-sycl`
 
 No periodic metrics: `llama-server` prints one timing block per request, ending
 with `eval time … tokens per second` (decode) and `prompt eval time …` (prefill).
-For comparable numbers use `b70-vulkan-bench` / `b70-vllm-bench`.
+For comparable numbers use `./benchmarks/bench_vllm.sh` against vLLM.

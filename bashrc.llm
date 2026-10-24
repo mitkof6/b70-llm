@@ -6,24 +6,29 @@ export LLM_DIR
 # which breaks `ssh host cmd` if this is the last line of .bashrc.
 if [ -f "$LLM_DIR/env.sh" ]; then . "$LLM_DIR/env.sh"; fi
 
-# vLLM XPU (best at concurrency; default server)
-alias b70-vllm-download="$LLM_DIR/download_model.sh"
-alias b70-vllm="$LLM_DIR/serve_vllm.sh"        # MTP4 + patches (~78 t/s)
-alias b70-vllm-claude="VLLM_MTP_N=0 VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # cache on, MTP off
-alias b70-vllm-cache="VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache, no v5 (unstable on overlap)
-alias b70-vllm-claude-mtp="VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache + v5
-alias b70-vllm-bench="$LLM_DIR/bench_vllm.sh"
+# vLLM XPU (best at concurrency). The vLLM checkpoint is dense-only, so these
+# aliases force LLM_MODEL_OVERRIDE=dense even when env.sh selects "moe".
+# (Model download and benchmarking are not aliased: run
+#  ./models/download_model.sh  and  ./benchmarks/bench_vllm.sh  directly.)
+alias b70-vllm="LLM_MODEL_OVERRIDE=dense $LLM_DIR/serve_vllm.sh"        # MTP4 + patches (~78 t/s)
+alias b70-vllm-claude="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=0 VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # cache on, MTP off
+alias b70-vllm-cache="LLM_MODEL_OVERRIDE=dense VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache, no v5 (unstable on overlap)
+alias b70-vllm-claude-mtp="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache + v5
+alias b70-vllm-fullctx="LLM_MODEL_OVERRIDE=dense VLLM_MAX_MODEL_LEN=262144 VLLM_MAX_NUM_SEQS=1 VLLM_MAX_BATCHED_TOKENS=4096 VLLM_GPU_MEM_UTIL=0.95 VLLM_MTP_N=0 VLLM_PREFIX_CACHING=0 $LLM_DIR/serve_vllm.sh"  # full 262k ctx, MTP off
 alias b70-vllm-logs='docker logs -f vllm-b70'
 alias b70-vllm-stop='docker rm -f vllm-b70'
 
-# llama.cpp — both stop vLLM first (single card). SYCL is the fastest single-stream.
-alias b70-sycl="$LLM_DIR/serve_sycl.sh"      # SYCL + MTP n=2  (~34 t/s)
+# llama.cpp SYCL — stops vLLM first (single card); the only llama.cpp backend here.
+# Plain aliases use the model selected by the LLM_MODEL line in env.sh.
+# The -dense / -moe aliases force one for a single run.
+alias b70-sycl="$LLM_DIR/serve_sycl.sh"  # true 262k, one slot, ~25 t/s
+alias b70-sycl-dense="LLM_MODEL_OVERRIDE=dense $LLM_DIR/serve_sycl.sh"
+alias b70-sycl-moe="LLM_MODEL_OVERRIDE=moe $LLM_DIR/serve_sycl.sh"
 alias b70-sycl-stop='docker rm -f llama-sycl'
 alias b70-sycl-logs='docker logs -f llama-sycl'
-alias b70-vulkan="$LLM_DIR/serve_vulkan.sh"  # Vulkan + MTP n=1 (~16 t/s)
-alias b70-vulkan-bench="$LLM_DIR/bench_vulkan.sh"
-alias b70-vulkan-stop='pkill -x llama-server'
-alias b70-vulkan-logs='tail -f $LLM_DIR/llama-server.log'
+
+# Show the model selected in env.sh (re-sources it, so edits apply immediately)
+alias b70-model='. "$LLM_DIR/env.sh" && printf "LLM_MODEL=%s (%s)\n" "$LLM_MODEL" "$LLM_MODEL_LABEL"'
 
 # Show which backend is currently serving
 alias b70-what="$LLM_DIR/status.sh"

@@ -8,7 +8,7 @@
 # with prompts/qwen38-p512.json.
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$DIR/env.sh"
+source "$DIR/../env.sh" || exit 1
 
 MAXTOK="${1:-512}"
 CONC="${2:-1}"
