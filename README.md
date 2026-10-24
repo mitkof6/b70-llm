@@ -23,28 +23,33 @@ Both models advertise as `qwen`, so opencode/Claude configs never change.
 
 ```bash
 source ~/.bashrc        # loads the b70-* aliases
-b70-vllm                # default: fastest + overlap-safe
+b70-vllm-exp            # preferred: upstream v0.32.0 on the API port
+# or
+b70-vllm                # pinned 0.27.2rc1 fallback
 # or
 b70-sycl                # llama.cpp, model from env.sh
 ```
 
 | Alias | Backend | Config | ~decode | Notes |
 | ----- | ------- | ------ | ------- | ----- |
-| `b70-vllm`        | vLLM | MTP4 + prefix cache + v5 | **67 t/s** | **default** — overlap-safe, best all-rounder |
-| `b70-vllm-fast`   | vLLM | MTP4, cache off            | **78 t/s** | fastest single-stream; bench numbers |
-| `b70-vllm-fullctx`| vLLM | full 262k ctx, MTP off     | 27 t/s   | one long stream |
+| `b70-vllm-exp`    | vLLM 0.32.0 | MTP4 + prefix cache | **82 t/s** | **preferred** — upstream, overlap-safe, serves :8001 |
+| `b70-vllm`        | vLLM 0.27.2rc1 | MTP4 + prefix cache + v5 | 67 t/s | pinned legacy fallback |
+| `b70-vllm-fast`   | vLLM 0.27.2rc1 | MTP4, cache off            | **78 t/s** | pinned, cache-off bench recipe |
+| `b70-vllm-fullctx`| vLLM 0.27.2rc1 | full 262k ctx, MTP off     | 27 t/s   | legacy full context |
 | `b70-sycl`        | SYCL | MTP n=2 + graphs + sparse FA | 45–50 t/s (MoE) / 34 t/s (dense) | true 262k ctx |
 | `b70-sycl-moe` / `b70-sycl-dense` | SYCL | same, model forced | | one-off model switch |
 
-All servers listen on **:8001**.
+All servers listen on **:8001**, including `b70-vllm-exp`.
 
 ## Stop / watch
 
 ```bash
-b70-vllm-stop   ; b70-vllm-logs     # vLLM   (docker 'vllm-b70')
-b70-sycl-stop   ; b70-sycl-logs     # SYCL   (docker 'llama-sycl')
-b70-what                            # which backend is live
-b70-model                           # which model env.sh selects
+b70-vllm-exp-stop ; b70-vllm-exp-logs   # v0.32.0 exp (docker 'vllm-b70-exp')
+b70-vllm-stop     ; b70-vllm-logs       # pinned vLLM (docker 'vllm-b70')
+b70-sycl-stop     ; b70-sycl-logs       # SYCL (docker 'llama-sycl')
+b70-logs                                # logs for whichever backend is live
+b70-what                                # which backend is live
+b70-model                               # which model env.sh selects
 ```
 
 Log-line meanings: [LOGS.md](LOGS.md).
@@ -58,17 +63,25 @@ Log-line meanings: [LOGS.md](LOGS.md).
 ```
 
 Reference decode bench (realworld prompts): `benchmarks/b70-realworld-context-harness.py`.
+The harness prompts are calibrated with **thinking on**; pass
+`chat_template_kwargs={"enable_thinking": true}` (or the stock harness fails its
+512-token check).
 
 ## Numbers
 
 | Config | decode tok/s |
 | ------ | ------------ |
-| vLLM + MTP4, C1 (cache off) | **77.7** |
-| vLLM + MTP4 + cache + v5, C1 | 66.8 |
+| vLLM 0.32.0 + MTP4 + cache, C1 (p512, thinking on) | **81.8** |
+| vLLM 0.32.0 + MTP4 + cache, C3 aggregate | **138.5** |
+| vLLM 0.27.2rc1 + MTP4 + cache + v5, C1 | 72.4 |
+| vLLM 0.27.2rc1 + MTP4, C1 (cache off) | 77.7 |
 | vLLM, no MTP, C1 | 30.4 |
 | SYCL + MTP n=2 (dense) | 34.0 |
 | SYCL + MTP n=2 + graphs + sparse FA (MoE, 262k) | 45–50 |
 | vLLM full 262k ctx, MTP off | 27.3 |
+
+A/B report and raw harness output:
+`benchmarks/results/2026-10-25-v0.32.0-vs-pinned/`.
 
 MTP (speculative decoding) is the big win: vLLM 30 → 78 t/s. Bench prompts matter
 hugely — one repeated filler sentence collapses MTP acceptance to ~50%.
@@ -109,15 +122,20 @@ backend, then `opencode`; pick model/variant in the TUI (config is not hot-reloa
 
 Claude Code speaks the Anthropic API, which both backends also serve, so the same
 `~/.claude/settings.json` works for either (template: `config/claude.settings.json`).
+vLLM 0.32.0 (`b70-vllm-exp`) serves `/v1/messages` natively; tested with Claude
+Code 2.1.273 (a benign `unrecognized_model` warning is expected for `qwen`).
 Run `claude` (not `--model sonnet/opus`).
 
 ## Gotchas
 
 - One backend per card; every `serve_*` stops the others.
 - MoE is GGUF-only → vLLM can't serve it; `b70-vllm*` force the dense checkpoint.
-- **MTP4 is single-stream without v5** — overlapping requests kill EngineCore
-  (vllm-xpu-kernels#510). The default `b70-vllm` sets v5, so it is overlap-safe;
-  `b70-vllm-fast` (no v5) is for single-stream only.
+- **MTP4 is single-stream without v5 on the pinned build** — overlapping requests
+  kill EngineCore (vllm-xpu-kernels#510). `b70-vllm` sets v5, so it is
+  overlap-safe; `b70-vllm-fast` (no v5) is for single-stream only. Upstream
+  v0.32.0 (`b70-vllm-exp`) needs no v5 and survived C3.
+- v0.32.0 reserves ~1 GiB for CUDA-graph profiling: `VLLM_GPU_MEM_UTIL=0.92` is
+  required for 131072 ctx (0.88 fails to allocate KV).
 - vLLM cold start ~8–12 min (torch.compile), warm ~3.5–6 min; SYCL starts in ~1 min.
   Keep the `vllm-compile-cache` volume and don't change compile-relevant flags or
   it recompiles. `--enforce-eager` drops decode to ~4 t/s.

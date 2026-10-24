@@ -16,6 +16,10 @@ if docker_running "$VLLM_CONTAINER"; then
   echo "vLLM XPU - docker '$VLLM_CONTAINER' on http://127.0.0.1:${VLLM_PORT} (Qwen3.8-27B dense)"
   found=1
 fi
+if docker_running "vllm-b70-exp"; then
+  echo "vLLM XPU exp v0.32.0 - docker 'vllm-b70-exp' on http://127.0.0.1:${VLLM_PORT_EXP:-$LLM_PORT} (Qwen3.8-27B dense)"
+  found=1
+fi
 if docker_running "$LLAMA_SYCL_CONTAINER"; then
   # Read the actual GGUF out of the container command, so -dense/-moe overrides
   # are reported correctly even though env.sh selects the other model.

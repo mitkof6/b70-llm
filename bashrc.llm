@@ -16,6 +16,18 @@ alias b70-vllm-fullctx="LLM_MODEL_OVERRIDE=dense VLLM_MAX_MODEL_LEN=262144 VLLM_
 alias b70-vllm-logs='docker logs -f vllm-b70'
 alias b70-vllm-stop='docker rm -f vllm-b70'
 
+# vLLM LATEST (v0.32.0) experiment — no cookbook patches by default, port 8001
+# (the shared API port, so opencode/Claude configs work unchanged).
+alias b70-vllm-exp="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm_exp.sh"  # latest upstream MTP4 + cache
+alias b70-vllm-exp-patched="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 VLLM_EXP_PATCHES=1 $LLM_DIR/serve_vllm_exp.sh"  # with old cookbook patches
+alias b70-vllm-exp-logs='docker logs -f vllm-b70-exp'
+alias b70-vllm-exp-log='docker logs -f vllm-b70-exp'
+alias b70-vllm-exp-stop='docker rm -f vllm-b70-exp'
+
+# Logs for whichever backend is live (exp first, then pinned vLLM, then SYCL).
+alias b70-logs='docker logs -f $(docker ps --format "{{.Names}}" | grep -m1 -E "^(vllm-b70-exp|vllm-b70|llama-sycl)$")'
+alias b70-log=b70-logs
+
 # llama.cpp SYCL — stops vLLM first (single card); the only llama.cpp backend here.
 # Plain aliases use the model selected by the LLM_MODEL line in env.sh.
 # The -dense / -moe aliases force one for a single run.
