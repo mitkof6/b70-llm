@@ -10,10 +10,8 @@ if [ -f "$LLM_DIR/env.sh" ]; then . "$LLM_DIR/env.sh"; fi
 # aliases force LLM_MODEL_OVERRIDE=dense even when env.sh selects "moe".
 # (Model download and benchmarking are not aliased: run
 #  ./models/download_model.sh  and  ./benchmarks/bench_vllm.sh  directly.)
-alias b70-vllm="LLM_MODEL_OVERRIDE=dense $LLM_DIR/serve_vllm.sh"        # MTP4 + patches (~78 t/s)
-alias b70-vllm-claude="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=0 VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # cache on, MTP off
-alias b70-vllm-cache="LLM_MODEL_OVERRIDE=dense VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache, no v5 (unstable on overlap)
-alias b70-vllm-claude-mtp="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 $LLM_DIR/serve_vllm.sh"  # MTP4 + cache + v5
+alias b70-vllm="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 $LLM_DIR/serve_vllm.sh"  # default: MTP4 + cache + v5 (~67 t/s, overlap-safe)
+alias b70-vllm-fast="LLM_MODEL_OVERRIDE=dense $LLM_DIR/serve_vllm.sh"        # MTP4, cache off (~78 t/s, single-stream bench)
 alias b70-vllm-fullctx="LLM_MODEL_OVERRIDE=dense VLLM_MAX_MODEL_LEN=262144 VLLM_MAX_NUM_SEQS=1 VLLM_MAX_BATCHED_TOKENS=4096 VLLM_GPU_MEM_UTIL=0.95 VLLM_MTP_N=0 VLLM_PREFIX_CACHING=0 $LLM_DIR/serve_vllm.sh"  # full 262k ctx, MTP off
 alias b70-vllm-logs='docker logs -f vllm-b70'
 alias b70-vllm-stop='docker rm -f vllm-b70'

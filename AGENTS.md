@@ -28,8 +28,8 @@ docker logs -f vllm-b70      # first start in a mode ~8-12 min; warm ~3.5-6 min
 ./benchmarks/bench_vllm_stream.sh 128 5 off greedy   # article-style single-stream bench
 ```
 
-Reference decode benchmark (realworld prompts; full command in README §Measured
-performance): `benchmarks/b70-realworld-context-harness.py`.
+Reference decode benchmark (realworld prompts; full command in README §Benchmark):
+`benchmarks/b70-realworld-context-harness.py`.
 
 llama.cpp (faster single-stream; stops vLLM because only one fits the card).
 Both models work here; the MoE GGUF is at
@@ -39,13 +39,12 @@ Both models work here; the MoE GGUF is at
 ./serve_sycl.sh           # SYCL + MTP n=2 + SYCL graphs (fastest) on :8001
 ```
 
-Aliases (after `source ~/.bashrc`): `b70-vllm`, `b70-vllm-claude` (vLLM, MTP
-off + prefix cache on), `b70-vllm-cache` (MTP4 + cache without v5; overlap
-unsafe), `b70-vllm-claude-mtp` (MTP4 + cache + v5; overlap-safe, ~67 t/s),
-`b70-vllm-fullctx` (full 262144 ctx, one stream), `b70-vllm-logs`,
-`b70-vllm-stop`, `b70-sycl` (true 262k, one slot), `b70-sycl-dense`,
-`b70-sycl-moe`, `b70-sycl-logs`, `b70-sycl-stop`, `b70-what`, `b70-model`.
-vLLM aliases force `LLM_MODEL_OVERRIDE=dense` (MoE is GGUF-only).
+Aliases (after `source ~/.bashrc`): `b70-vllm` (default: MTP4 + cache + v5;
+overlap-safe, ~67 t/s), `b70-vllm-fast` (MTP4, cache off; fastest single-stream,
+~78 t/s), `b70-vllm-fullctx` (full 262144 ctx, one stream), `b70-vllm-logs`,
+`b70-vllm-stop`, `b70-sycl` (true 262k, one slot),
+`b70-sycl-dense`, `b70-sycl-moe`, `b70-sycl-logs`, `b70-sycl-stop`, `b70-what`,
+`b70-model`. vLLM aliases force `LLM_MODEL_OVERRIDE=dense` (MoE is GGUF-only).
 `b70-vllm-fullctx` uses `VLLM_MAX_MODEL_LEN=262144 VLLM_MAX_NUM_SEQS=1
 VLLM_GPU_MEM_UTIL=0.95 VLLM_MTP_N=0` (full context works, MTP off);
 the default `b70-vllm` stays at 131072 for 64 slots + MTP4.
