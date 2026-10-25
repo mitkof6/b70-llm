@@ -3,8 +3,8 @@
 # client-side post-first-token decode tok/s, matching jonathanmann.tech's B70 table
 # (p~512/g128, one warmup + N runs, median).
 # NOTE: the repeated filler prompt below is deliberate (it reproduces that
-# article's methodology) but collapses MTP acceptance to ~50%, so with MTP4 on
-# these numbers run well below the harness headline (77.7 t/s on realistic
+# article's methodology) but collapses MTP acceptance to ~50%, so with MTP10 on
+# these numbers run well below the harness headline (95.2 t/s on realistic
 # prompts; see benchmarks/b70-realworld-context-harness.py).
 # Usage: ./bench_vllm_stream.sh [gen_tokens] [runs] [think: on|off|both] [sampling: greedy|modelcard]
 #   modelcard = Qwen3.8-27B recommended presets, paired with the thinking switch
@@ -73,7 +73,7 @@ def one(enable_think):
                 usage = d["usage"]
             for ch in (d.get("choices") or []):
                 delta = ch.get("delta") or {}
-                # vLLM 0.27 streams thinking as delta.reasoning; llama.cpp uses reasoning_content
+                # vLLM streams thinking as delta.reasoning; some servers use reasoning_content
                 if delta.get("reasoning") or delta.get("reasoning_content"):
                     rc += 1
                 if tf is None and (delta.get("content") or delta.get("reasoning") or delta.get("reasoning_content")):

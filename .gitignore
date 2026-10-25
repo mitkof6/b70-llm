@@ -3,14 +3,9 @@
 # below while the multi-GB weight directories stay ignored.
 models/*
 !models/download_model.sh
-images/
-llama-sycl/
 
 # Runtime logs
 *.log
-
-# Secrets — this config contains your OpenRouter API key; keep it local only
-config/opencode.global.jsonc
 
 # Python bytecode from running the benchmarks
 __pycache__/

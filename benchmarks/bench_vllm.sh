@@ -2,8 +2,8 @@
 # Benchmark a running vLLM server: per-request and aggregate tok/s.
 # Usage: ./bench_vllm.sh [max_output_tokens] [concurrency]
 # NOTE: the repeated filler prompt below collapses MTP acceptance to ~50%
-# (README: "Bench prompts matter hugely"), so with MTP4 on, these numbers run
-# well below the harness headline (77.7 t/s on realistic prompts). For
+# (README: "Bench prompts matter hugely"), so with MTP10 on, these numbers run
+# well below the harness headline (95.2 t/s on realistic prompts). For
 # comparable headline numbers use benchmarks/b70-realworld-context-harness.py
 # with prompts/qwen38-p512.json.
 set -uo pipefail

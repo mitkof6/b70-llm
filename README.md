@@ -1,168 +1,147 @@
-# Qwen3.8 on an Intel Arc Pro B70
+# Qwen3.8-27B on an Intel Arc Pro B70
 
-Run **Qwen3.8-27B** (dense) or **Qwen3.8-35B-A3B** (MoE) on a 32 GB Arc Pro B70.
-Two backends, **only one fits at a time** — each `serve_*` stops the others.
+Serve **Qwen3.8-27B** (dense, GPTQ INT4 + MTP) with **vLLM XPU v0.32.0** on a
+32 GB Arc Pro B70. One model, one backend, one API: `http://127.0.0.1:8001`,
+model id `qwen`.
 
-## Pick a model
+## Stack
 
-One line in `env.sh`:
+- vLLM `vllm/vllm-openai-xpu:v0.32.0` (upstream, no cookbook patches)
+- MTP n=10 + prefix caching, fp8 KV, float16
+- 196608 context, 64 sequences, 4096-token prefill chunks
+- Explicit 8.6 GiB KV pool + CUDA-graph estimate off
+- Coding-friendly defaults: `temperature 0.2`, `top_p 0.8`, `top_k 20`
 
-```bash
-LLM_MODEL="moe"     # or "dense"
-```
-
-| `LLM_MODEL` | Model | Backends |
-| ----------- | ----- | -------- |
-| `moe`   | Qwen3.8-35B-A3B, Q4_K_M GGUF ~22 GB | SYCL only (vLLM has no MoE checkpoint) |
-| `dense` | Qwen3.8-27B, GPTQ INT4 ~19 GB + Q4_K_M GGUF | vLLM + SYCL |
-
-One-off without editing `env.sh`: `LLM_MODEL_OVERRIDE=moe ./serve_sycl.sh`.
-Both models advertise as `qwen`, so opencode/Claude configs never change.
-
-## Start a server
+## Quick start
 
 ```bash
-source ~/.bashrc        # loads the b70-* aliases
-b70-vllm-exp            # preferred: upstream v0.32.0 on the API port
-# or
-b70-vllm                # pinned 0.27.2rc1 fallback
-# or
-b70-sycl                # llama.cpp, model from env.sh
+source ~/.bashrc            # loads the b70-* aliases
+./models/download_model.sh  # first time only: ~19 GB
+b70-vllm                    # start on :8001
+b70-vllm-logs               # follow logs
+b70-what                    # is it running?
+b70-vllm-stop               # stop and remove the container
 ```
 
-| Alias | Backend | Config | ~decode | Notes |
-| ----- | ------- | ------ | ------- | ----- |
-| `b70-vllm-exp`    | vLLM 0.32.0 | MTP10 + prefix cache | **95 t/s** | **preferred** — upstream, overlap-safe, serves :8001 |
-| `b70-vllm`        | vLLM 0.27.2rc1 | MTP4 + prefix cache + v5 | 67 t/s | pinned legacy fallback |
-| `b70-vllm-fast`   | vLLM 0.27.2rc1 | MTP4, cache off            | **78 t/s** | pinned, cache-off bench recipe |
-| `b70-vllm-fullctx`| vLLM 0.27.2rc1 | full 262k ctx, MTP off     | 27 t/s   | legacy full context |
-| `b70-sycl`        | SYCL | MTP n=2 + graphs + sparse FA | 45–50 t/s (MoE) / 34 t/s (dense) | true 262k ctx |
-| `b70-sycl-moe` / `b70-sycl-dense` | SYCL | same, model forced | | one-off model switch |
+Directly, without aliases: `./serve_vllm.sh`.
 
-All servers listen on **:8001**, including `b70-vllm-exp`.
+Upgrading from the old setup? Re-source `~/.bashrc` (or open a new shell) so
+the retired aliases are replaced. `env.sh` also ignores the old `LLM_MODEL` /
+MTP4 export automatically.
 
-## Stop / watch
-
-```bash
-b70-vllm-exp-stop ; b70-vllm-exp-logs   # v0.32.0 exp (docker 'vllm-b70-exp')
-b70-vllm-stop     ; b70-vllm-logs       # pinned vLLM (docker 'vllm-b70')
-b70-sycl-stop     ; b70-sycl-logs       # SYCL (docker 'llama-sycl')
-b70-logs                                # logs for whichever backend is live
-b70-what                                # which backend is live
-b70-model                               # which model env.sh selects
-```
-
-Log-line meanings: [LOGS.md](LOGS.md).
+First start compiles (~8–12 min); warm starts are ~3.5–6 min. The
+`vllm-compile-cache` volume keeps the warm cache. If the eGPU enumerates in
+Small BAR mode, `serve_vllm.sh` fails early with recovery instructions.
 
 ## Benchmark
 
 ```bash
-./benchmarks/bench_vllm.sh 512 1     # single-stream tok/s
-./benchmarks/bench_vllm.sh 512 3     # concurrency 3 (aggregate)
+./benchmarks/bench_vllm.sh 512 1      # single-stream tok/s
+./benchmarks/bench_vllm.sh 512 3      # concurrency 3 (aggregate)
 ./benchmarks/bench_vllm_stream.sh 128 5 off greedy
 ```
 
-Reference decode bench (realworld prompts): `benchmarks/b70-realworld-context-harness.py`.
-The p512 prompts are calibrated with **thinking on**; add `--thinking` (the
-stock harness otherwise uses the server default and fails its 512-token check).
+Reference decode benchmark (realworld prompts):
+
+```bash
+python3 benchmarks/b70-realworld-context-harness.py --thinking
+```
+
+The p512 prompts are calibrated with **thinking on**; `--thinking` is required
+or the stock harness fails its 512-token check. The repeated-filler prompts in
+`bench_vllm.sh` collapse MTP acceptance to ~50%, so use the realworld harness
+for MTP tuning.
 
 ## Numbers
 
 | Config | decode tok/s |
 | ------ | ------------ |
-| vLLM 0.32.0 + MTP10 + cache, C1 (p512, thinking on) | **95.2** |
-| vLLM 0.32.0 + MTP10 + cache, C3 (3 real prompts) | **156–160** |
-| vLLM 0.32.0 + MTP4 + cache, C1 (p512, thinking on) | 81.8 |
-| vLLM 0.27.2rc1 + MTP4 + cache + v5, C1 | 72.4 |
-| vLLM 0.27.2rc1 + MTP4, C1 (cache off) | 77.7 |
-| vLLM, no MTP, C1 | 30.4 |
-| SYCL + MTP n=2 (dense) | 34.0 |
-| SYCL + MTP n=2 + graphs + sparse FA (MoE, 262k) | 45–50 |
-| vLLM full 262k ctx, MTP off | 27.3 |
+| v0.32.0 + MTP10 + cache, C1 (p512, thinking on) | **95.2** |
+| v0.32.0 + MTP10 + cache, C3 (3 real prompts) | **156–160** aggregate |
+| v0.32.0 + MTP4 + cache, C1 (p512, thinking on) | 81.8 |
+| v0.32.0, no MTP, C1 | 30.4 |
 
-A/B report and raw harness output:
-`benchmarks/results/2026-10-25-v0.32.0-vs-pinned/`.
+MTP is the big win: ~30 → ~95 t/s. MTP10 trades acceptance (94% → 85%) for
+more decode on realistic prompts; on low-acceptance synthetic filler it can be
+slower than n=4.
 
-MTP (speculative decoding) is the big win: vLLM 30 → 78 t/s. Bench prompts matter
-hugely — one repeated filler sentence collapses MTP acceptance to ~50%.
+Long-context validation: a 110k-token request completed with ~118 s prefill and
+~1.6 GiB GPU memory still free.
 
-## Migrate to a new PC
+## Context and memory
 
-Needs: Linux + Arc Pro B70 (`xe` driver, ReBAR on), Docker, user in `render`/`video`
-groups, Python 3, `hf` CLI, LM Studio (GGUF source), opencode (optional).
+196608 context with MTP10 + prefix caching fits by reserving the KV pool
+explicitly: `--kv-cache-memory-bytes 9234179686` (8.6 GiB) plus
+`VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`. vLLM reports **200,540 KV
+tokens** (1.02x at 196608).
 
-```bash
-# 1. install (Ubuntu 26.04)
-sudo apt install -y docker.io python3 pipx intel-gpu-tools
-sudo usermod -aG docker,render,video "$USER"     # next login
-pipx install "huggingface_hub[cli]" && pipx ensurepath
-# 2. copy the folder (models/ is re-downloadable)
-rsync -a --exclude models/ ./ newpc:~/b70-llm/
-# 3. aliases
-echo 'source ~/b70-llm/bashrc.llm' >> ~/.bashrc
-# 4. opencode (archive has no API key — add your OpenRouter key if you use it)
-cp ~/b70-llm/config/opencode.global.jsonc ~/.config/opencode/opencode.jsonc
-# 5. Claude Code
-mkdir -p ~/.claude && cp ~/b70-llm/config/claude.settings.json ~/.claude/settings.json
-# 6. fetch the dense checkpoint (MoE GGUFs come from LM Studio)
-./models/download_model.sh
-# 7. start + verify
-b70-vllm && b70-what && ./benchmarks/bench_vllm.sh 128 1
-```
-
-Machine-specific overrides: `LLAMA_GGUF_OVERRIDE`, `VLLM_PORT`, `LLAMA_CTX`,
-`VLLM_MAX_MODEL_LEN`, `VLLM_MAX_NUM_SEQS`, `VLLM_GPU_MEM_UTIL`, `VLLM_MTP_N_EXP`, `VLLM_EXTRA_ARGS`,
-`LLAMA_SYCL_ENABLE_GRAPH`, `LLAMA_SYCL_SPARSE_FA`, `LLAMA_SYCL_PARALLEL`.
+The card is seen as 28.8/30.3 GiB free on startup, so 0.94 is the practical
+utilization ceiling. Auto-sizing at 0.94 gave only 6.75 GiB KV (~145k max);
+0.95 + graph-estimate off + 4096-token chunks was still 0.14 GiB short.
+Set `VLLM_KV_CACHE_MEMORY_BYTES=""` to return to automatic sizing.
 
 ## Use from opencode / Claude Code
 
-Both servers are OpenAI-compatible on :8001. opencode: providers `vllm/qwen` and
-`sycl/qwen`, each with `off`/`low`/`medium`/`xhigh` thinking variants — start the
-backend, then `opencode`; pick model/variant in the TUI (config is not hot-reloaded).
+opencode: provider `vllm/qwen`, with `off`/`low`/`medium`/`xhigh` thinking
+variants. The default model is `vllm/qwen#off`; restart opencode after config
+changes. The `cost` block in the opencode config prices local usage at the
+OpenRouter Qwen3.8-27B rates so `opencode stats` shows an estimate.
 
-Claude Code speaks the Anthropic API, which both backends also serve, so the same
-`~/.claude/settings.json` works for either (template: `config/claude.settings.json`).
-vLLM 0.32.0 (`b70-vllm-exp`) serves `/v1/messages` natively; tested with Claude
-Code 2.1.273 (a benign `unrecognized_model` warning is expected for `qwen`).
-Run `claude` (not `--model sonnet/opus`).
+Claude Code speaks the Anthropic API, which vLLM serves natively. Copy
+`config/claude.settings.json` to `~/.claude/settings.json`, then run `claude`
+(not `--model sonnet/opus`). Tested with Claude Code 2.1.273; a benign
+`unrecognized_model` warning for `qwen` is expected.
+
+## Migrate to a new PC
+
+Needs: Linux + Arc Pro B70 (`xe` driver, ReBAR on), Docker, user in
+`render`/`video` groups, Python 3, `hf` CLI, opencode (optional).
+
+```bash
+sudo apt install -y docker.io python3 pipx intel-gpu-tools
+sudo usermod -aG docker,render,video "$USER"   # next login
+pipx install "huggingface_hub[cli]" && pipx ensurepath
+
+rsync -a --exclude models/ ./ newpc:~/b70-llm/
+echo 'source ~/b70-llm/bashrc.llm' >> ~/.bashrc
+
+# opencode: add your own OpenRouter key if you keep that provider
+mkdir -p ~/.config/opencode
+cp ~/b70-llm/config/opencode.global.jsonc ~/.config/opencode/opencode.jsonc
+
+mkdir -p ~/.claude
+cp ~/b70-llm/config/claude.settings.json ~/.claude/settings.json
+
+./models/download_model.sh
+b70-vllm && b70-what && ./benchmarks/bench_vllm.sh 128 1
+```
+
+Useful overrides: `VLLM_PORT`, `VLLM_MAX_MODEL_LEN`, `VLLM_MAX_NUM_SEQS`,
+`VLLM_GPU_MEM_UTIL`, `VLLM_MTP_N`, `VLLM_KV_CACHE_MEMORY_BYTES`,
+`VLLM_TEMPERATURE`, `VLLM_TOP_P`, `VLLM_TOP_K`, `VLLM_EXTRA_ARGS`.
 
 ## Gotchas
 
-- One backend per card; every `serve_*` stops the others.
-- MoE is GGUF-only → vLLM can't serve it; `b70-vllm*` force the dense checkpoint.
-- **MTP4 is single-stream without v5 on the pinned build** — overlapping requests
-  kill EngineCore (vllm-xpu-kernels#510). `b70-vllm` sets v5, so it is
-  overlap-safe; `b70-vllm-fast` (no v5) is for single-stream only. Upstream
-  v0.32.0 (`b70-vllm-exp`) needs no v5 and survived C3.
-- v0.32.0 conservatively estimates CUDA-graph memory: 1.06 GiB estimated vs
-  0.21 GiB actual. The exp build disables that estimate
-  (`VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`), reserves the KV pool
-  explicitly (`--kv-cache-memory-bytes` 8.6 GiB), and uses 4096-token prefill
-  chunks, so 196608 ctx + MTP10 + prefix caching fits (vLLM reports 200,540 KV
-  tokens at 1.02x). Auto-sizing at 0.94 gave only 6.75 GiB KV and 196608 failed
-  (estimated 145152 max). `b70-vllm-exp` also defaults to coding-friendly
-  sampling (`temperature 0.2`, `top_p 0.8`, `top_k 20`); override with
-  `VLLM_TEMPERATURE`/`VLLM_TOP_P`/`VLLM_TOP_K`.
-- MTP10 trades acceptance (94% → 85%) for ~16% more decode on realistic
-  prompts. On low-acceptance filler benches it can be *slower* than MTP4, so use
-  `VLLM_MTP_N_EXP=4` for that synthetic workload (exp build).
-- vLLM cold start ~8–12 min (torch.compile), warm ~3.5–6 min; SYCL starts in ~1 min.
-  Keep the `vllm-compile-cache` volume and don't change compile-relevant flags or
-  it recompiles. `--enforce-eager` drops decode to ~4 t/s.
-- Full 262k ctx on vLLM needs MTP off (`b70-vllm-fullctx`); 2 sequences need ~16 GiB
-  KV and won't fit.
+- One server owns the card and the port; `serve_vllm.sh` replaces `vllm-b70`.
+- `--enforce-eager` drops decode to ~4 t/s. Don't change compile-relevant flags
+  casually; it invalidates the compile cache.
+- MTP10 is the default. Use `VLLM_MTP_N=4` for low-acceptance filler benches,
+  or `VLLM_MTP_N=0` to disable speculation.
+- Prefix caching is on by default; `VLLM_PREFIX_CACHING=0` disables it.
+- The explicit 8.6 GiB KV reservation is what makes 196608 fit. Raise it or
+  `VLLM_GPU_MEM_UTIL` only after checking free memory.
+- There is no SYCL, MoE, or pinned-vLLM fallback in this repo anymore.
 
 ## Files
 
 | File | Purpose |
 | ---- | ------- |
-| `env.sh` | Paths, image tags, device ids, `LLM_MODEL` switch (sourced by all scripts) |
-| `serve_sycl.sh` / `serve_vllm.sh` | Start each backend on :8001 |
-| `status.sh` | Which backend is serving |
-| `models/download_model.sh` | Resumable HF download of the dense vLLM checkpoint |
+| `env.sh` | Paths, model, image, port, GPU preflight (sourced by all scripts) |
+| `serve_vllm.sh` | Start/replace the vLLM container on :8001 |
+| `status.sh` | Report whether the server is running |
+| `models/download_model.sh` | Resumable HF download of the vLLM checkpoint |
 | `benchmarks/` | Realworld harness, prompt generator, `bench_vllm*.sh` |
-| `patches/` | Cookbook MTP + APC patches + Claude Code chat templates |
-| `images/` | Pinned vLLM image tar (optional; Docker pulls if absent) |
+| `patches/qwen3.8-claude.jinja` | Claude Code chat template |
 | `bashrc.llm` | Aliases + env, sourced from `~/.bashrc` |
-| `config/` | opencode + Claude Code config archive |
-| `AGENTS.md` / `LOGS.md` | Agent notes / log field guide |
+| `config/` | opencode + Claude Code config templates |
+| `AGENTS.md` / `NEXT-STEPS.md` | Agent notes / open experiments |

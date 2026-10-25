@@ -6,38 +6,10 @@ export LLM_DIR
 # which breaks `ssh host cmd` if this is the last line of .bashrc.
 if [ -f "$LLM_DIR/env.sh" ]; then . "$LLM_DIR/env.sh"; fi
 
-# vLLM XPU (best at concurrency). The vLLM checkpoint is dense-only, so these
-# aliases force LLM_MODEL_OVERRIDE=dense even when env.sh selects "moe".
-# (Model download and benchmarking are not aliased: run
-#  ./models/download_model.sh  and  ./benchmarks/bench_vllm.sh  directly.)
-alias b70-vllm="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 $LLM_DIR/serve_vllm.sh"  # default: MTP4 + cache + v5 (~67 t/s, overlap-safe)
-alias b70-vllm-fast="LLM_MODEL_OVERRIDE=dense $LLM_DIR/serve_vllm.sh"        # MTP4, cache off (~78 t/s, single-stream bench)
-alias b70-vllm-fullctx="LLM_MODEL_OVERRIDE=dense VLLM_MAX_MODEL_LEN=262144 VLLM_MAX_NUM_SEQS=1 VLLM_MAX_BATCHED_TOKENS=4096 VLLM_GPU_MEM_UTIL=0.95 VLLM_MTP_N=0 VLLM_PREFIX_CACHING=0 $LLM_DIR/serve_vllm.sh"  # full 262k ctx, MTP off
+# vLLM XPU (v0.32.0, MTP10 + prefix cache) — the only supported backend.
+alias b70-vllm="$LLM_DIR/serve_vllm.sh"
 alias b70-vllm-logs='docker logs -f vllm-b70'
 alias b70-vllm-stop='docker rm -f vllm-b70'
 
-# vLLM LATEST (v0.32.0) experiment — no cookbook patches by default, port 8001
-# (the shared API port, so opencode/Claude configs work unchanged).
-alias b70-vllm-exp="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N_EXP=10 VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm_exp.sh"  # latest upstream MTP10 + cache (~95 t/s)
-alias b70-vllm-exp-logs='docker logs -f vllm-b70-exp'
-alias b70-vllm-exp-log='docker logs -f vllm-b70-exp'
-alias b70-vllm-exp-stop='docker rm -f vllm-b70-exp'
-
-# Logs for whichever backend is live (exp first, then pinned vLLM, then SYCL).
-alias b70-logs='docker logs -f $(docker ps --format "{{.Names}}" | grep -m1 -E "^(vllm-b70-exp|vllm-b70|llama-sycl)$")'
-alias b70-log=b70-logs
-
-# llama.cpp SYCL — stops vLLM first (single card); the only llama.cpp backend here.
-# Plain aliases use the model selected by the LLM_MODEL line in env.sh.
-# The -dense / -moe aliases force one for a single run.
-alias b70-sycl="$LLM_DIR/serve_sycl.sh"  # true 262k, one slot, ~25 t/s
-alias b70-sycl-dense="LLM_MODEL_OVERRIDE=dense $LLM_DIR/serve_sycl.sh"
-alias b70-sycl-moe="LLM_MODEL_OVERRIDE=moe $LLM_DIR/serve_sycl.sh"
-alias b70-sycl-stop='docker rm -f llama-sycl'
-alias b70-sycl-logs='docker logs -f llama-sycl'
-
-# Show the model selected in env.sh (re-sources it, so edits apply immediately)
-alias b70-model='. "$LLM_DIR/env.sh" && printf "LLM_MODEL=%s (%s)\n" "$LLM_MODEL" "$LLM_MODEL_LABEL"'
-
-# Show which backend is currently serving
+# Show whether the server is running.
 alias b70-what="$LLM_DIR/status.sh"
