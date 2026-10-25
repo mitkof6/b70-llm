@@ -134,8 +134,15 @@ Run `claude` (not `--model sonnet/opus`).
   kill EngineCore (vllm-xpu-kernels#510). `b70-vllm` sets v5, so it is
   overlap-safe; `b70-vllm-fast` (no v5) is for single-stream only. Upstream
   v0.32.0 (`b70-vllm-exp`) needs no v5 and survived C3.
-- v0.32.0 reserves ~1 GiB for CUDA-graph profiling: `VLLM_GPU_MEM_UTIL=0.94`
-  is the tuned default for 131072 ctx + MTP10 (0.88 fails to allocate KV).
+- v0.32.0 conservatively estimates CUDA-graph memory: 1.06 GiB estimated vs
+  0.21 GiB actual. The exp build disables that estimate
+  (`VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0`), reserves the KV pool
+  explicitly (`--kv-cache-memory-bytes` 8.6 GiB), and uses 4096-token prefill
+  chunks, so 196608 ctx + MTP10 + prefix caching fits (vLLM reports 200,540 KV
+  tokens at 1.02x). Auto-sizing at 0.94 gave only 6.75 GiB KV and 196608 failed
+  (estimated 145152 max). `b70-vllm-exp` also defaults to coding-friendly
+  sampling (`temperature 0.2`, `top_p 0.8`, `top_k 20`); override with
+  `VLLM_TEMPERATURE`/`VLLM_TOP_P`/`VLLM_TOP_K`.
 - MTP10 trades acceptance (94% → 85%) for ~16% more decode on realistic
   prompts. On low-acceptance filler benches it can be *slower* than MTP4, so use
   `VLLM_MTP_N_EXP=4` for that synthetic workload (exp build).

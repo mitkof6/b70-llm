@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # EXPERIMENT: run the latest vLLM XPU (v0.32.0) on the Arc Pro B70.
-# Same model and serve flags as serve_vllm.sh, but NO cookbook patches by
-# default: we want to see what upstream v0.32.0 + vllm-xpu-kernels 0.1.15.4
-# do on their own. Tuned MTP10 and prefix caching are on (~95 t/s realworld).
-#
-# Set VLLM_EXP_PATCHES=1 to apply the old cookbook patch set if something
-# breaks (patch_mtp_nightly/boundary, APC fixes, and the v5 GDN split).
+# Same model and serve flags as serve_vllm.sh, but NO cookbook patches: we
+# want to see what upstream v0.32.0 + vllm-xpu-kernels 0.1.15.4 do on their
+# own. Tuned MTP10 and prefix caching are on (~95 t/s realworld).
 #
 # Uses its own container name (vllm-b70-exp) and compile-cache volume, but
 # shares the API port (8001) so opencode/Claude configs never change. It stops
@@ -50,26 +47,25 @@ fi
 VLLM_PREFIX_FLAG="--enable-prefix-caching"
 [ "${VLLM_PREFIX_CACHING:-1}" = "1" ] || VLLM_PREFIX_FLAG="--no-enable-prefix-caching"
 
-# No patches unless explicitly requested: upstream v0.32.0 is the point here.
-PATCH_CMDS=""
-if [ "${VLLM_EXP_PATCHES:-0}" = "1" ]; then
-  PATCH_CMDS="python /patch_mtp.py && python /patch_boundary.py"
-  if [ "${VLLM_PREFIX_CACHING:-1}" = "1" ]; then
-    PATCH_CMDS="$PATCH_CMDS && python /patch_fix_backward_copy.py && python /patch_fix_eagle_drop.py && python /patch_fix_accepted_sync.py"
-  fi
-  if [ "${VLLM_MIXED_SPLIT:-1}" = "1" ]; then
-    PATCH_CMDS="$PATCH_CMDS && python /patch_gdn_mixed_split_v5.py"
-  fi
-fi
-
-# Context/memory knobs: same defaults as serve_vllm.sh.
-export VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-131072}"
+# Context/memory knobs: 196608 with MTP10 + prefix caching. vLLM sees only
+# 28.8/30.3 GiB free on startup, so 0.95 is the hard utilization ceiling, and
+# auto-sizing still came up 0.14 GiB short at 0.95 + graph-estimate off +
+# 4096-token prefill chunks. Reserve the KV pool explicitly instead (bypasses
+# gpu_memory_utilization sizing); 8.6 GiB covers the 8.4 GiB needed for 196608.
+# Set VLLM_KV_CACHE_MEMORY_BYTES="" to return to automatic sizing.
+export VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-196608}"
 export VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-64}"
-export VLLM_MAX_BATCHED_TOKENS="${VLLM_MAX_BATCHED_TOKENS:-8192}"
-# v0.32.0 profiles CUDA graphs by default, reserving ~1 GiB extra; 0.88
-# leaves only ~4.94 GiB KV cache, too little for a 131072-token slot (5.23
-# GiB needed). 0.94 also leaves room for MTP10 workspace/graphs.
+export VLLM_MAX_BATCHED_TOKENS="${VLLM_MAX_BATCHED_TOKENS:-4096}"
 export VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.94}"
+export VLLM_KV_CACHE_MEMORY_BYTES="${VLLM_KV_CACHE_MEMORY_BYTES-9234179686}"
+VLLM_KV_MEMORY_FLAG=""
+[ -n "$VLLM_KV_CACHE_MEMORY_BYTES" ] && VLLM_KV_MEMORY_FLAG="--kv-cache-memory-bytes $VLLM_KV_CACHE_MEMORY_BYTES"
+
+# Coding-friendly sampling defaults. Lower temperature helps code/tool-call
+# correctness and raises MTP acceptance; override via env for other workloads.
+export VLLM_TEMPERATURE="${VLLM_TEMPERATURE:-0.2}"
+export VLLM_TOP_P="${VLLM_TOP_P:-0.8}"
+export VLLM_TOP_K="${VLLM_TOP_K:-20}"
 export VLLM_KV_CACHE_DTYPE="${VLLM_KV_CACHE_DTYPE:-fp8}"
 export VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-0}"
 export VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:-}"
@@ -82,12 +78,6 @@ docker run -d --name "$VLLM_CONTAINER_EXP" --stop-timeout 120 \
   --shm-size 2g \
   -v vllm-compile-cache-exp:/root/.cache/vllm \
   -v "$MODEL_DIR":/models/qwen:ro \
-  -v "$DIR/patches/patch_mtp_nightly.py":/patch_mtp.py:ro \
-  -v "$DIR/patches/patch_mtp_boundary.py":/patch_boundary.py:ro \
-  -v "$DIR/patches/patch_fix_accepted_sync.py":/patch_fix_accepted_sync.py:ro \
-  -v "$DIR/patches/patch_fix_backward_copy.py":/patch_fix_backward_copy.py:ro \
-  -v "$DIR/patches/patch_fix_eagle_drop.py":/patch_fix_eagle_drop.py:ro \
-  -v "$DIR/patches/patch_gdn_mixed_split_v5.py":/patch_gdn_mixed_split_v5.py:ro \
   -v "$LLAMA_CHAT_TEMPLATE":/chat-template.jinja:ro \
   -p 127.0.0.1:${VLLM_PORT_EXP}:${VLLM_PORT_EXP} \
   -e VLLM_WORKER_MULTIPROC_METHOD=spawn \
@@ -96,10 +86,10 @@ docker run -d --name "$VLLM_CONTAINER_EXP" --stop-timeout 120 \
   -e ZE_AFFINITY_MASK=0 \
   -e PYTORCH_ALLOC_CONF=expandable_segments:True \
   -e B70_MTP_BF16_DRAFT=1 \
+  -e VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0 \
   --entrypoint bash \
   "$VLLM_IMAGE_EXP" -lc \
   "set -e
-    ${PATCH_CMDS:+$PATCH_CMDS && }
     exec vllm serve /models/qwen \
       --served-model-name $VLLM_SERVED_NAME_EXP \
       --host 0.0.0.0 --port $VLLM_PORT_EXP \
@@ -107,7 +97,7 @@ docker run -d --name "$VLLM_CONTAINER_EXP" --stop-timeout 120 \
       --max-model-len $VLLM_MAX_MODEL_LEN \
       --max-num-seqs $VLLM_MAX_NUM_SEQS \
       --max-num-batched-tokens $VLLM_MAX_BATCHED_TOKENS \
-      --gpu-memory-utilization $VLLM_GPU_MEM_UTIL $VLLM_PREFIX_FLAG \
+      --gpu-memory-utilization $VLLM_GPU_MEM_UTIL $VLLM_KV_MEMORY_FLAG $VLLM_PREFIX_FLAG \
       --trust-remote-code --language-model-only \
       --chat-template /chat-template.jinja \
       --enable-auto-tool-choice --tool-call-parser qwen3_coder \
@@ -115,7 +105,7 @@ docker run -d --name "$VLLM_CONTAINER_EXP" --stop-timeout 120 \
       --quantization gptq \
       --default-chat-template-kwargs '{\"enable_thinking\": false}' \
       --generation-config vllm \
-      --override-generation-config '{\"temperature\": 0.7, \"top_p\": 0.8, \"top_k\": 20}' \
+      --override-generation-config '{\"temperature\": $VLLM_TEMPERATURE, \"top_p\": $VLLM_TOP_P, \"top_k\": $VLLM_TOP_K}' \
       $VLLM_EAGER_FLAG $VLLM_EXTRA_ARGS $VLLM_SPEC_CONFIG"
 
 echo "Started '$VLLM_CONTAINER_EXP' ($VLLM_IMAGE_EXP, $LLM_MODEL_LABEL)."

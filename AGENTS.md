@@ -10,7 +10,9 @@ interchangeable backends, which cannot share the 32 GB card:
   or ~25.5 t/s with a true 262144-token slot (`b70-sycl`).
 - **vLLM XPU** — two builds. Upstream `vllm/vllm-openai-xpu:v0.32.0`
   (`b70-vllm-exp`) is preferred: ~95 t/s single-stream with MTP10 + prefix cache,
-  no cookbook patches, overlap-safe, serves the shared API port :8001. Pinned
+  196608 ctx (graph estimate off + explicit 8.6 GiB KV), coding-friendly sampling
+  (temp 0.2), no cookbook patches,
+  overlap-safe, serves the shared API port :8001. Pinned
   `0.27.2rc1` + cookbook MTP patches (`b70-vllm`) is the fallback: ~78 t/s
   single-stream cache-off, ~67 t/s with prefix cache + v5. **Dense only**: the
   MoE download is GGUF-only.
@@ -44,8 +46,8 @@ Both models work here; the MoE GGUF is at
 ```
 
 Aliases (after `source ~/.bashrc`): `b70-vllm-exp` (preferred: upstream v0.32.0,
-MTP10 + cache, ~95 t/s, :8001), `b70-vllm-exp-patched` (MTP4 + old cookbook
-patches), `b70-vllm-exp-logs`/`-log`, `b70-vllm-exp-stop`, `b70-vllm` (pinned
+MTP10 + cache, ~95 t/s, :8001), `b70-vllm-exp-logs`/`-log`,
+`b70-vllm-exp-stop`, `b70-vllm` (pinned
 fallback: MTP4 + cache + v5, ~67 t/s), `b70-vllm-fast` (pinned MTP4, cache off;
 fastest single-stream, ~78 t/s), `b70-vllm-fullctx` (pinned full 262144 ctx, one
 stream), `b70-vllm-logs`, `b70-vllm-stop`, `b70-logs` (whichever backend is

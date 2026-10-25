@@ -19,7 +19,6 @@ alias b70-vllm-stop='docker rm -f vllm-b70'
 # vLLM LATEST (v0.32.0) experiment — no cookbook patches by default, port 8001
 # (the shared API port, so opencode/Claude configs work unchanged).
 alias b70-vllm-exp="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N_EXP=10 VLLM_PREFIX_CACHING=1 $LLM_DIR/serve_vllm_exp.sh"  # latest upstream MTP10 + cache (~95 t/s)
-alias b70-vllm-exp-patched="LLM_MODEL_OVERRIDE=dense VLLM_MTP_N_EXP=4 VLLM_PREFIX_CACHING=1 VLLM_MIXED_SPLIT=1 VLLM_EXP_PATCHES=1 $LLM_DIR/serve_vllm_exp.sh"  # with old cookbook patches
 alias b70-vllm-exp-logs='docker logs -f vllm-b70-exp'
 alias b70-vllm-exp-log='docker logs -f vllm-b70-exp'
 alias b70-vllm-exp-stop='docker rm -f vllm-b70-exp'

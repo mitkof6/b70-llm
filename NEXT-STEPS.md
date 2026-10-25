@@ -19,16 +19,19 @@ python3 benchmarks/b70-realworld-context-harness.py --help   # --thinking
 
 The tuning knobs are env vars: `VLLM_MTP_N_EXP` (exp build; legacy
 `VLLM_MTP_N` belongs to the pinned script), `VLLM_GPU_MEM_UTIL`,
-`VLLM_MAX_BATCHED_TOKENS`, `VLLM_DTYPE`, `VLLM_EXTRA_ARGS`. The p512 harness
+`VLLM_MAX_BATCHED_TOKENS`, `VLLM_DTYPE`, `VLLM_TEMPERATURE`/`VLLM_TOP_P`/
+`VLLM_TOP_K`, `VLLM_EXTRA_ARGS`. The exp build now defaults to 196608 ctx and
+`temperature 0.2` for coding (graph estimate off, explicit 8.6 GiB KV,
+4096-token prefill chunks). The p512 harness
 needs `--thinking`; the stock default renders 472 tokens and fails its check.
 
 ## Highest-value experiments
 
 1. **MTP10 under sampling, not just greedy.** The harness sends
-   `temperature=0`; Claude Code uses the server's `temperature=0.7` (or its own).
-   MTP acceptance can fall under sampling, shrinking the n=10 gain. Run the p512
-   harness with a sampling variant (temperature 0.7 / top_p 0.8 / top_k 20) at
-   n=4, n=8, n=10 and keep the best for interactive use. This is the biggest
+   `temperature=0`; agent clients hit the server default, now `temperature 0.2`
+   (was 0.7). MTP acceptance still falls under sampling, shrinking the n=10
+   gain. Run the p512 harness at the new 0.2 default (and at 0.7 for comparison)
+   at n=4, n=8, n=10 and keep the best for interactive use. This is the biggest
    unknown in the current tuning.
 2. **Real Claude Code workload.** Run a multi-turn edit/test task at n=10 and
    compare wall time and tok/s to n=4. Check tool-call parsing, reasoning
@@ -71,7 +74,11 @@ needs `--thinking`; the stock default renders 472 tokens and fails its check.
 ## Known constraints
 
 - One backend owns the 32 GB card; every `serve_*` stops the others.
-- MTP10 at 0.94 leaves ~8.2 GiB KV and fits 131072 ctx; 0.92 does not.
+- MTP10 + graph-estimate off + explicit 8.6 GiB KV (`--kv-cache-memory-bytes`)
+  fits 196608 ctx; vLLM reports 200,540 KV tokens at 1.02x. Auto-sizing at
+  0.94 gave only 6.75 GiB (~145152 max), and 0.95 + graph off + 4096-token
+  chunks was still 0.14 GiB short. 262144 needs MTP off and
+  `VLLM_MAX_NUM_SEQS=1`.
 - vLLM cold start ~8–12 min, warm ~3.5–6 min; changing MTP depth or memory
   utilization invalidates some compile-cache entries.
 - MoE is GGUF-only; all vLLM aliases force the dense checkpoint.

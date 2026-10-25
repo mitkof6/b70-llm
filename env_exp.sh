@@ -72,13 +72,11 @@ export VLLM_SERVED_NAME="qwen"
 # vLLM v0.32.0 + vllm-xpu-kernels 0.1.15.4 (torch 2.14 XPU).
 # Separate container/compile-cache so the pinned baseline is untouched. The
 # port is shared with the API (8001) so opencode/Claude configs never change.
-# serve_vllm_exp.sh applies NO cookbook patches by default; VLLM_EXP_PATCHES=1
-# reapplies the old set (mtp/boundary/APC/v5) if upstream still needs it.
+# serve_vllm_exp.sh applies no cookbook patches.
 export VLLM_IMAGE_EXP="vllm/vllm-openai-xpu:v0.32.0"
 export VLLM_CONTAINER_EXP="vllm-b70-exp"
 export VLLM_PORT_EXP="${VLLM_PORT_EXP:-$LLM_PORT}"
 export VLLM_SERVED_NAME_EXP="qwen"
-export VLLM_EXP_PATCHES="${VLLM_EXP_PATCHES:-0}"
 # MTP draft depth for the experimental build. 10 is the tuned single-stream
 # sweet spot on this MTP checkpoint (~95 t/s realworld p512); 4 was the old
 # default. Use VLLM_MTP_N_EXP, not the legacy VLLM_MTP_N that env.sh exports.
