@@ -68,7 +68,8 @@ def snapshot(root, require_spec=True):
 
 
 def request(url, root, model, messages, max_tokens, raw_path, cache_expected,
-            expected_prompt_tokens=None, require_spec=True, ignore_eos=False):
+            expected_prompt_tokens=None, require_spec=True, ignore_eos=False,
+            thinking=False):
     before = snapshot(root, require_spec=require_spec)
     body = {
         "model": model,
@@ -79,6 +80,8 @@ def request(url, root, model, messages, max_tokens, raw_path, cache_expected,
         "stream_options": {"include_usage": True},
         "ignore_eos": ignore_eos,
     }
+    if thinking:
+        body["chat_template_kwargs"] = {"enable_thinking": True}
     req = urllib.request.Request(url, data=json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"})
     start_ns = time.monotonic_ns()
@@ -226,6 +229,7 @@ def main():
     parser.add_argument("--no-spec", action="store_true")
     parser.add_argument("--full-output-warmup", action="store_true")
     parser.add_argument("--ignore-eos", action="store_true")
+    parser.add_argument("--thinking", action="store_true")
     args = parser.parse_args()
     os.makedirs(args.outdir, exist_ok=False)
     with open(args.prompts) as source:
@@ -244,7 +248,7 @@ def main():
         args.root + "/v1/chat/completions", args.root, args.model,
         [{"role": "user", "content": generic_content}], 16,
         args.outdir + "/warmup-generic.sse.jsonl", "cold",
-        require_spec=not args.no_spec)
+        require_spec=not args.no_spec, thinking=args.thinking)
     print("milestone=warmup_generic_done", flush=True)
 
     shape_prompt = prompts[0]
@@ -258,7 +262,7 @@ def main():
         args.outdir + "/warmup-shape.sse.jsonl", "cold",
         expected_prompt_tokens=shape_prompt["calibrated_tokens"],
         require_spec=not args.no_spec,
-        ignore_eos=args.ignore_eos)
+        ignore_eos=args.ignore_eos, thinking=args.thinking)
     print("milestone=warmup_shape_done", flush=True)
 
     records = []
@@ -273,7 +277,7 @@ def main():
             item["messages"], args.output, raw_path, "cold",
             expected_prompt_tokens=item["calibrated_tokens"],
             require_spec=not args.no_spec,
-            ignore_eos=args.ignore_eos)
+            ignore_eos=args.ignore_eos, thinking=args.thinking)
         record.update({
             "rep": rep,
             "mode": args.mode,

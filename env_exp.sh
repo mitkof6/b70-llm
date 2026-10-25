@@ -79,9 +79,12 @@ export VLLM_CONTAINER_EXP="vllm-b70-exp"
 export VLLM_PORT_EXP="${VLLM_PORT_EXP:-$LLM_PORT}"
 export VLLM_SERVED_NAME_EXP="qwen"
 export VLLM_EXP_PATCHES="${VLLM_EXP_PATCHES:-0}"
-# MTP draft depth. 4 is the benchmark recipe. Upstream 0.32.0 handles MTP +
-# prefix caching + overlapping requests without the old v5 split patch.
-export VLLM_MTP_N="${VLLM_MTP_N:-4}"
+# MTP draft depth for the experimental build. 10 is the tuned single-stream
+# sweet spot on this MTP checkpoint (~95 t/s realworld p512); 4 was the old
+# default. Use VLLM_MTP_N_EXP, not the legacy VLLM_MTP_N that env.sh exports.
+# Upstream 0.32.0 handles MTP + prefix caching + overlapping requests without
+# the old v5 split patch.
+export VLLM_MTP_N_EXP="${VLLM_MTP_N_EXP:-10}"
 # Model dtype. float16 is the tested default; bfloat16 is an experiment knob.
 export VLLM_DTYPE="${VLLM_DTYPE:-float16}"
 

@@ -3,6 +3,11 @@
 Date: 2026-10-25. Single Intel Arc Pro B70, Qwen3.8-27B GPTQ-Int4 MTP checkpoint.
 Same client, same prompts, same flags where possible. One server at a time.
 
+> Follow-up: MTP depth was tuned later; the current default is MTP10 at
+> `gpu-memory-utilization 0.94`, ~95 t/s. See
+> `../2026-10-25-mtp-tuning/report.md`. This report keeps the n=4 numbers for
+> the like-for-like comparison against the pinned build.
+
 ## Configurations
 
 | | v0.32.0 (winner) | pinned 0.27.2rc1 |

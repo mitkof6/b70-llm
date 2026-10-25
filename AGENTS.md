@@ -9,7 +9,7 @@ interchangeable backends, which cannot share the 32 GB card:
   ~43 t/s for the MoE with SYCL graphs + sparse FA + MTP n=2 at 4x64k slots,
   or ~25.5 t/s with a true 262144-token slot (`b70-sycl`).
 - **vLLM XPU** — two builds. Upstream `vllm/vllm-openai-xpu:v0.32.0`
-  (`b70-vllm-exp`) is preferred: ~82 t/s single-stream with MTP4 + prefix cache,
+  (`b70-vllm-exp`) is preferred: ~95 t/s single-stream with MTP10 + prefix cache,
   no cookbook patches, overlap-safe, serves the shared API port :8001. Pinned
   `0.27.2rc1` + cookbook MTP patches (`b70-vllm`) is the fallback: ~78 t/s
   single-stream cache-off, ~67 t/s with prefix cache + v5. **Dense only**: the
@@ -33,7 +33,7 @@ docker logs -f vllm-b70-exp  # first start ~8-12 min; warm ~3.5-6 min
 ```
 
 Reference decode benchmark (realworld prompts; full command in README §Benchmark):
-`benchmarks/b70-realworld-context-harness.py`.
+`benchmarks/b70-realworld-context-harness.py --thinking`.
 
 llama.cpp (faster single-stream; stops vLLM because only one fits the card).
 Both models work here; the MoE GGUF is at
@@ -44,7 +44,7 @@ Both models work here; the MoE GGUF is at
 ```
 
 Aliases (after `source ~/.bashrc`): `b70-vllm-exp` (preferred: upstream v0.32.0,
-MTP4 + cache, ~82 t/s, :8001), `b70-vllm-exp-patched` (same + old cookbook
+MTP10 + cache, ~95 t/s, :8001), `b70-vllm-exp-patched` (MTP4 + old cookbook
 patches), `b70-vllm-exp-logs`/`-log`, `b70-vllm-exp-stop`, `b70-vllm` (pinned
 fallback: MTP4 + cache + v5, ~67 t/s), `b70-vllm-fast` (pinned MTP4, cache off;
 fastest single-stream, ~78 t/s), `b70-vllm-fullctx` (pinned full 262144 ctx, one

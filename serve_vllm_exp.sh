@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # EXPERIMENT: run the latest vLLM XPU (v0.32.0) on the Arc Pro B70.
 # Same model and serve flags as serve_vllm.sh, but NO cookbook patches by
-# default: we want to see what upstream v0.32.0 + vllm-xpu-kernels 0.1.16.1
-# do on their own. MTP4 and prefix caching are on (the b70-vllm default).
+# default: we want to see what upstream v0.32.0 + vllm-xpu-kernels 0.1.15.4
+# do on their own. Tuned MTP10 and prefix caching are on (~95 t/s realworld).
 #
 # Set VLLM_EXP_PATCHES=1 to apply the old cookbook patch set if something
 # breaks (patch_mtp_nightly/boundary, APC fixes, and the v5 GDN split).
@@ -38,10 +38,12 @@ b70_gpu_bar_check || exit 1
 stop_other_backends "$VLLM_CONTAINER_EXP"
 docker rm -f "$VLLM_CONTAINER_EXP" >/dev/null 2>&1 || true
 
-# MTP4 (same as b70-vllm). VLLM_MTP_N=0 disables speculation.
+# MTP10 is the tuned single-stream default (4 was the old recipe).
+# VLLM_MTP_N_EXP=0 disables speculation. (Legacy env.sh exports VLLM_MTP_N=4,
+# so the exp build uses its own knob.)
 VLLM_SPEC_CONFIG=""
-if [ "${VLLM_MTP_N:-4}" -gt 0 ] 2>/dev/null; then
-  VLLM_SPEC_CONFIG="--speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\":${VLLM_MTP_N}}'"
+if [ "${VLLM_MTP_N_EXP:-10}" -gt 0 ] 2>/dev/null; then
+  VLLM_SPEC_CONFIG="--speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\":${VLLM_MTP_N_EXP}}'"
 fi
 
 # Prefix caching on by default for this experiment (same as b70-vllm).
@@ -66,8 +68,8 @@ export VLLM_MAX_NUM_SEQS="${VLLM_MAX_NUM_SEQS:-64}"
 export VLLM_MAX_BATCHED_TOKENS="${VLLM_MAX_BATCHED_TOKENS:-8192}"
 # v0.32.0 profiles CUDA graphs by default, reserving ~1 GiB extra; 0.88
 # leaves only ~4.94 GiB KV cache, too little for a 131072-token slot (5.23
-# GiB needed). 0.92 restores headroom (log recommends >= 0.9154).
-export VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.92}"
+# GiB needed). 0.94 also leaves room for MTP10 workspace/graphs.
+export VLLM_GPU_MEM_UTIL="${VLLM_GPU_MEM_UTIL:-0.94}"
 export VLLM_KV_CACHE_DTYPE="${VLLM_KV_CACHE_DTYPE:-fp8}"
 export VLLM_ENFORCE_EAGER="${VLLM_ENFORCE_EAGER:-0}"
 export VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:-}"

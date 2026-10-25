@@ -32,7 +32,7 @@ b70-sycl                # llama.cpp, model from env.sh
 
 | Alias | Backend | Config | ~decode | Notes |
 | ----- | ------- | ------ | ------- | ----- |
-| `b70-vllm-exp`    | vLLM 0.32.0 | MTP4 + prefix cache | **82 t/s** | **preferred** — upstream, overlap-safe, serves :8001 |
+| `b70-vllm-exp`    | vLLM 0.32.0 | MTP10 + prefix cache | **95 t/s** | **preferred** — upstream, overlap-safe, serves :8001 |
 | `b70-vllm`        | vLLM 0.27.2rc1 | MTP4 + prefix cache + v5 | 67 t/s | pinned legacy fallback |
 | `b70-vllm-fast`   | vLLM 0.27.2rc1 | MTP4, cache off            | **78 t/s** | pinned, cache-off bench recipe |
 | `b70-vllm-fullctx`| vLLM 0.27.2rc1 | full 262k ctx, MTP off     | 27 t/s   | legacy full context |
@@ -63,16 +63,16 @@ Log-line meanings: [LOGS.md](LOGS.md).
 ```
 
 Reference decode bench (realworld prompts): `benchmarks/b70-realworld-context-harness.py`.
-The harness prompts are calibrated with **thinking on**; pass
-`chat_template_kwargs={"enable_thinking": true}` (or the stock harness fails its
-512-token check).
+The p512 prompts are calibrated with **thinking on**; add `--thinking` (the
+stock harness otherwise uses the server default and fails its 512-token check).
 
 ## Numbers
 
 | Config | decode tok/s |
 | ------ | ------------ |
-| vLLM 0.32.0 + MTP4 + cache, C1 (p512, thinking on) | **81.8** |
-| vLLM 0.32.0 + MTP4 + cache, C3 aggregate | **138.5** |
+| vLLM 0.32.0 + MTP10 + cache, C1 (p512, thinking on) | **95.2** |
+| vLLM 0.32.0 + MTP10 + cache, C3 (3 real prompts) | **156–160** |
+| vLLM 0.32.0 + MTP4 + cache, C1 (p512, thinking on) | 81.8 |
 | vLLM 0.27.2rc1 + MTP4 + cache + v5, C1 | 72.4 |
 | vLLM 0.27.2rc1 + MTP4, C1 (cache off) | 77.7 |
 | vLLM, no MTP, C1 | 30.4 |
@@ -111,7 +111,7 @@ b70-vllm && b70-what && ./benchmarks/bench_vllm.sh 128 1
 ```
 
 Machine-specific overrides: `LLAMA_GGUF_OVERRIDE`, `VLLM_PORT`, `LLAMA_CTX`,
-`VLLM_MAX_MODEL_LEN`, `VLLM_MAX_NUM_SEQS`, `VLLM_GPU_MEM_UTIL`, `VLLM_EXTRA_ARGS`,
+`VLLM_MAX_MODEL_LEN`, `VLLM_MAX_NUM_SEQS`, `VLLM_GPU_MEM_UTIL`, `VLLM_MTP_N_EXP`, `VLLM_EXTRA_ARGS`,
 `LLAMA_SYCL_ENABLE_GRAPH`, `LLAMA_SYCL_SPARSE_FA`, `LLAMA_SYCL_PARALLEL`.
 
 ## Use from opencode / Claude Code
@@ -134,8 +134,11 @@ Run `claude` (not `--model sonnet/opus`).
   kill EngineCore (vllm-xpu-kernels#510). `b70-vllm` sets v5, so it is
   overlap-safe; `b70-vllm-fast` (no v5) is for single-stream only. Upstream
   v0.32.0 (`b70-vllm-exp`) needs no v5 and survived C3.
-- v0.32.0 reserves ~1 GiB for CUDA-graph profiling: `VLLM_GPU_MEM_UTIL=0.92` is
-  required for 131072 ctx (0.88 fails to allocate KV).
+- v0.32.0 reserves ~1 GiB for CUDA-graph profiling: `VLLM_GPU_MEM_UTIL=0.94`
+  is the tuned default for 131072 ctx + MTP10 (0.88 fails to allocate KV).
+- MTP10 trades acceptance (94% → 85%) for ~16% more decode on realistic
+  prompts. On low-acceptance filler benches it can be *slower* than MTP4, so use
+  `VLLM_MTP_N_EXP=4` for that synthetic workload (exp build).
 - vLLM cold start ~8–12 min (torch.compile), warm ~3.5–6 min; SYCL starts in ~1 min.
   Keep the `vllm-compile-cache` volume and don't change compile-relevant flags or
   it recompiles. `--enforce-eager` drops decode to ~4 t/s.
