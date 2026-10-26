@@ -9,3 +9,7 @@ models/*
 
 # Python bytecode from running the benchmarks
 __pycache__/
+
+# Personal agent notes — kept locally, not part of the public repo
+AGENTS.md
+NEXT-STEPS.md

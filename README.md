@@ -4,6 +4,14 @@ Serve **Qwen3.8-27B** (dense, GPTQ INT4 + MTP) with **vLLM XPU v0.32.0** on a
 32 GB Arc Pro B70. One model, one backend, one API: `http://127.0.0.1:8001`,
 model id `qwen`.
 
+Licensed under the GNU GPL v3 — see [LICENSE](LICENSE).
+
+## Demo
+
+A live Claude Code session against the local server:
+
+<video src="docs/demo.mp4" controls width="100%"></video>
+
 ## Stack
 
 - vLLM `vllm/vllm-openai-xpu:v0.32.0` (upstream, no cookbook patches)
@@ -144,4 +152,5 @@ Useful overrides: `VLLM_PORT`, `VLLM_MAX_MODEL_LEN`, `VLLM_MAX_NUM_SEQS`,
 | `patches/qwen3.8-claude.jinja` | Claude Code chat template |
 | `bashrc.llm` | Aliases + env, sourced from `~/.bashrc` |
 | `config/` | opencode + Claude Code config templates |
-| `AGENTS.md` / `NEXT-STEPS.md` | Agent notes / open experiments |
+| `docs/` | Demo video embedded in this README |
+| `LICENSE` | GNU GPL v3 |
